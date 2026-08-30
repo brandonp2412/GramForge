@@ -1,0 +1,31 @@
+# Runtime configuration and secrets
+.env
+.env.*
+!config.example.env
+config.env
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+
+# Runtime state and logs
+.update-state
+.patched-app-state
+.cron-update.log
+.cron-failure-state
+*.log
+
+# Downloaded/generated application artifacts
+apk/
+public/
+
+# Downloaded tooling and patch bundles
+cli/
+patches/
+APKEditor.jar
+
+# Editor/OS noise
+.DS_Store
+.idea/
+.vscode/
