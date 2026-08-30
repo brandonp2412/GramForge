@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/gramforge-banner.svg" alt="GramForge — Forge the Instagram you actually want." width="100%">
+</p>
+
 # GramForge
 
 Reproducible command-line Instagram customization built on Morphe.
