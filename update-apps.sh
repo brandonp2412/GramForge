@@ -11,6 +11,9 @@ mkdir -p apk
 die() { echo "ERROR: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"; }
 need jq
+need curl
+need unzip
+need python3
 [[ -f APKEditor.jar ]] || die "APKEditor.jar is missing from the repo root."
 
 case "${1:-instagram}" in
@@ -51,6 +54,64 @@ instagram_version() {
     sed -n '/Most common compatible versions:/{n;s/^[[:space:]]*//;s/ .*//;p;q;}'
 }
 
+download_instagram_bundle() {
+  local version="$1" target="apk/instagram-$1.xapk"
+  local tmp_dir apkeep_bin downloaded manifest package_name version_name
+
+  [[ -x tools/ensure-apkeep.sh ]] || die "tools/ensure-apkeep.sh is missing or not executable."
+  apkeep_bin="$(./tools/ensure-apkeep.sh)"
+  tmp_dir="$(mktemp -d "apk/.instagram-$version.XXXXXX")"
+
+  echo "Downloading Instagram $version arm64-v8a with apkeep..."
+  if ! "$apkeep_bin" -a "com.instagram.android@$version" -d apk-pure -o 'arch=arm64-v8a' "$tmp_dir"; then
+    rm -rf "$tmp_dir"
+    die "Could not automatically download Instagram $version with apkeep."
+  fi
+
+  downloaded="$(find "$tmp_dir" -maxdepth 1 -type f \( -name '*.xapk' -o -name '*.apkm' \) -print -quit)"
+  [[ -n "$downloaded" && -f "$downloaded" ]] || {
+    rm -rf "$tmp_dir"
+    die "apkeep completed without producing an Instagram bundle."
+  }
+
+  manifest="$(unzip -p "$downloaded" manifest.json 2>/dev/null || true)"
+  [[ -n "$manifest" ]] || {
+    rm -rf "$tmp_dir"
+    die "Downloaded Instagram bundle has no manifest.json."
+  }
+  package_name="$(jq -r '.package_name // .package // empty' <<<"$manifest")"
+  version_name="$(jq -r '.version_name // .versionName // empty' <<<"$manifest")"
+  [[ "$package_name" == "com.instagram.android" ]] || {
+    rm -rf "$tmp_dir"
+    die "Downloaded bundle package is $package_name, expected com.instagram.android."
+  }
+  [[ "$version_name" == "$version" ]] || {
+    rm -rf "$tmp_dir"
+    die "Downloaded bundle version is $version_name, expected $version."
+  }
+  if ! python3 - "$downloaded" <<'PY'
+import io
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as outer:
+    base_name = next((name for name in outer.namelist() if name == 'com.instagram.android.apk' or name.endswith('/com.instagram.android.apk')), None)
+    if base_name is None:
+        raise SystemExit(1)
+    base = outer.read(base_name)
+with zipfile.ZipFile(io.BytesIO(base)) as apk:
+    raise SystemExit(0 if any(name.startswith('lib/arm64-v8a/') for name in apk.namelist()) else 1)
+PY
+  then
+    rm -rf "$tmp_dir"
+    die "Downloaded Instagram bundle does not contain arm64-v8a native libraries."
+  fi
+
+  mv "$downloaded" "$target"
+  rm -rf "$tmp_dir"
+  echo "Downloaded and verified Instagram bundle: $target"
+}
+
 patch_instagram() {
   local version input output previous previous_profile source downloaded
   local patches_version cli_version patch_profile
@@ -81,7 +142,10 @@ patch_instagram() {
       fi
     done < <(find apk -mindepth 2 -maxdepth 2 -name info.json -type f)
   fi
-  [[ -n "$source" ]] || die "Download Instagram $version from APKMirror to apk/instagram-$version.apkm and rerun."
+  if [[ -z "$source" ]]; then
+    download_instagram_bundle "$version"
+    source="apk/instagram-$version.xapk"
+  fi
   downloaded="$source"
   echo "Using compatible Instagram bundle: $downloaded"
   echo "Merging APK splits..."

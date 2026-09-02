@@ -18,9 +18,10 @@ The default profile:
 
 - Bash
 - Java compatible with the current Morphe Desktop release
-- `curl`, `jq`, and standard Unix tools
+- `curl`, `jq`, `unzip`, and standard Unix tools
 - `APKEditor.jar` in the repository root
-- an Instagram APKMirror bundle matching the version supported by the current patch bundle
+
+GramForge automatically acquires the exact supported Instagram bundle when it is not already cached locally. It uses EFF's `apkeep` with APKPure as the source, requests the `arm64-v8a` variant, and verifies the downloaded package name and version before patching. The pinned `apkeep` binary is downloaded on demand and SHA-256 checked before execution.
 
 Downloaded APKs, patch bundles, CLI jars, signing keys, logs, and runtime state are intentionally ignored by Git.
 
@@ -46,15 +47,9 @@ Navigation choices are also configurable with `HIDE_HOME`, `HIDE_REELS`, `HIDE_D
 ./update-apps.sh
 ```
 
-GramForge keeps Morphe Desktop and the Instagram Morphe patch bundle current, determines the supported Instagram version, merges the matching local APK bundle, applies the configured GramForge profile, and writes the result under `apk/`.
+GramForge keeps Morphe Desktop and the Instagram Morphe patch bundle current, determines the supported Instagram version, obtains the matching Instagram bundle automatically when needed, merges it, applies the configured GramForge profile, and writes the result under `apk/`.
 
-If the supported Instagram version changes, place the matching APKMirror bundle at:
-
-```text
-apk/instagram-<version>.apkm
-```
-
-and run the updater again.
+Existing `apk/instagram-<version>.apkm` or `apk/instagram-<version>.xapk` files are reused. Otherwise GramForge installs its pinned `apkeep` release under `.tools/`, downloads `com.instagram.android@<version>` from APKPure for `arm64-v8a`, verifies the bundle metadata, and continues without manual intervention.
 
 ## Scheduled publishing
 

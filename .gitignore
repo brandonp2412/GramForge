@@ -21,6 +21,7 @@ apk/
 public/
 
 # Downloaded tooling and patch bundles
+.tools/
 cli/
 patches/
 APKEditor.jar
