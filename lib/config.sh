@@ -27,7 +27,21 @@ else
   load_env_file "$HOME/.config/gramforge/publish.env"
 fi
 
-: "${GRAMFORGE_KEYSTORE:=$HOME/.config/gramforge/signing.keystore}"
+fdroid_signing_properties="$HOME/.config/android-signing/fdroid.properties"
+if [[ -f "$fdroid_signing_properties" ]]; then
+  property_value() {
+    sed -n "s/^$1=//p" "$fdroid_signing_properties" | tr -d '\r' | head -n 1
+  }
+  : "${GRAMFORGE_KEYSTORE:=$(property_value storeFile)}"
+  : "${GRAMFORGE_KEYSTORE_PASSWORD:=$(property_value storePassword)}"
+  : "${GRAMFORGE_KEY_ALIAS:=$(property_value keyAlias)}"
+  : "${GRAMFORGE_KEY_PASSWORD:=$(property_value keyPassword)}"
+else
+  : "${GRAMFORGE_KEYSTORE:=$HOME/.config/gramforge/signing.keystore}"
+  : "${GRAMFORGE_KEYSTORE_PASSWORD:=}"
+  : "${GRAMFORGE_KEY_ALIAS:=Morphe}"
+  : "${GRAMFORGE_KEY_PASSWORD:=}"
+fi
 : "${HIDE_HOME:=true}"
 : "${HIDE_REELS:=false}"
 : "${HIDE_DIRECT:=false}"
@@ -35,5 +49,6 @@ fi
 : "${HIDE_PROFILE:=false}"
 : "${HIDE_CREATE:=false}"
 
-export GRAMFORGE_CONFIG_FILE GRAMFORGE_KEYSTORE
+export GRAMFORGE_CONFIG_FILE GRAMFORGE_KEYSTORE GRAMFORGE_KEYSTORE_PASSWORD
+export GRAMFORGE_KEY_ALIAS GRAMFORGE_KEY_PASSWORD
 export HIDE_HOME HIDE_REELS HIDE_DIRECT HIDE_SEARCH HIDE_PROFILE HIDE_CREATE

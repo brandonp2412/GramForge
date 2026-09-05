@@ -166,7 +166,11 @@ patch_instagram() {
       -O hideCreate="$HIDE_CREATE" \
       --bytecode-mode STRIP_FAST \
       --exclusive \
-      -o "$output" --keystore "$GRAMFORGE_KEYSTORE"; then
+      -o "$output" \
+      --keystore "$GRAMFORGE_KEYSTORE" \
+      --keystore-password "$GRAMFORGE_KEYSTORE_PASSWORD" \
+      --keystore-entry-alias "$GRAMFORGE_KEY_ALIAS" \
+      --keystore-entry-password "$GRAMFORGE_KEY_PASSWORD"; then
     die "Patching failed; INSTAGRAM_VERSION was not updated."
   fi
   state_set INSTAGRAM_VERSION "$version"
