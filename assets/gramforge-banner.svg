@@ -25,24 +25,20 @@
     <circle cx="126" cy="126" r="112" fill="#ffffff" fill-opacity="0.025" stroke="#ffffff" stroke-opacity="0.06"/>
     <circle cx="126" cy="126" r="92" fill="none" stroke="url(#forge)" stroke-opacity="0.22" stroke-width="2"/>
 
-    <!-- sparks -->
     <g fill="url(#forge)" filter="url(#glow)">
       <path d="M31 58 l14 -5 l-5 14 z"/>
       <path d="M54 27 l8 -15 l6 18 z"/>
       <path d="M90 18 l4 -18 l8 17 z"/>
     </g>
 
-    <!-- hammer -->
     <g transform="rotate(38 139 87)">
       <rect x="132" y="52" width="18" height="112" rx="8" fill="url(#forge)"/>
       <rect x="93" y="41" width="94" height="34" rx="10" fill="url(#forge)"/>
       <rect x="108" y="34" width="31" height="48" rx="9" fill="#ff9a2e"/>
     </g>
 
-    <!-- anvil -->
     <path d="M46 153 H205 C210 153 213 158 210 162 L193 184 C188 191 181 195 172 195 H157 L166 210 H182 C188 210 192 214 192 220 V229 H61 V220 C61 214 65 210 71 210 H87 L96 195 H76 C67 195 61 191 56 184 L42 163 C39 158 42 153 46 153 Z" fill="url(#forge)"/>
 
-    <!-- forged G mark -->
     <path d="M87 93 C87 63 108 42 141 42 C159 42 174 49 185 61 L168 78 C161 70 152 66 141 66 C123 66 112 77 112 94 C112 112 123 123 142 123 C153 123 162 120 168 114 V106 H141 V85 H192 V124 C180 139 163 147 141 147 C108 147 87 125 87 93 Z" fill="#f8fafc" fill-opacity="0.95"/>
   </g>
 

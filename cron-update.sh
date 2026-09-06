@@ -33,34 +33,8 @@ matrix_send() {
     "$MATRIX_HOMESERVER/_matrix/client/v3/rooms/$matrix_room_path/send/m.room.message/$txn" >/dev/null
 }
 
-LOG_FILE=".cron-update.log"
-FAILURE_STATE=".cron-failure-state"
-before_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
-before_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
-before="$before_version|$before_profile"
-
-if ./update-apps.sh >"$LOG_FILE" 2>&1; then
-  after_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
-  after_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
-  after="$after_version|$after_profile"
-
-  if [[ -n "$after_version" && "$after" != "$before" ]]; then
-    apk="apk/instagram-patched-$after_version.apk"
-    [[ -f "$apk" ]] || { printf 'Expected patched APK not found: %s\n' "$apk" >&2; exit 1; }
-
-    message="GramForge Instagram build is ready."
-    if [[ "$publish_enabled" == true ]]; then
-      build_hash="$(sha256sum "$apk" | awk '{print substr($1, 1, 12)}')"
-      published_name="instagram-patched-$after_version-$build_hash.apk"
-      install -m 0644 "$apk" "$APK_PUBLIC_DIR/$published_name"
-      message="Download APK: $APK_PUBLIC_URL/$published_name"
-    fi
-
-    matrix_send "GramForge APK ready" "$message"
-  fi
-
-  : >"$FAILURE_STATE"
-else
+handle_update_failure() {
+  local fingerprint previous message
   fingerprint="$(sha256sum "$LOG_FILE" | awk '{print $1}')"
   previous="$(cat "$FAILURE_STATE" 2>/dev/null || true)"
   if [[ "$fingerprint" != "$previous" ]]; then
@@ -68,5 +42,36 @@ else
     matrix_send "GramForge update needs attention" "$message" || true
     printf '%s\n' "$fingerprint" >"$FAILURE_STATE"
   fi
+}
+
+LOG_FILE=".cron-update.log"
+FAILURE_STATE=".cron-failure-state"
+before_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
+before_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
+before="$before_version|$before_profile"
+
+if ! ./update-apps.sh >"$LOG_FILE" 2>&1; then
+  handle_update_failure
   exit 1
 fi
+
+after_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
+after_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
+after="$after_version|$after_profile"
+
+if [[ -n "$after_version" && "$after" != "$before" ]]; then
+  apk="apk/instagram-patched-$after_version.apk"
+  [[ -f "$apk" ]] || { printf 'Expected patched APK not found: %s\n' "$apk" >&2; exit 1; }
+
+  message="GramForge Instagram build is ready."
+  if [[ "$publish_enabled" == true ]]; then
+    build_hash="$(sha256sum "$apk" | awk '{print substr($1, 1, 12)}')"
+    published_name="instagram-patched-$after_version-$build_hash.apk"
+    install -m 0644 "$apk" "$APK_PUBLIC_DIR/$published_name"
+    message="Download APK: $APK_PUBLIC_URL/$published_name"
+  fi
+
+  matrix_send "GramForge APK ready" "$message"
+fi
+
+: >"$FAILURE_STATE"

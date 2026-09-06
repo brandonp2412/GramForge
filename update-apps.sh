@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Patch a new supported Instagram release when available.
+# Patches a newly supported Instagram release when one is available.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 # shellcheck source=lib/config.sh
@@ -21,7 +21,6 @@ case "${1:-instagram}" in
   *) die "Usage: $0 [instagram]" ;;
 esac
 
-# Refresh the Morphe CLI and Instagram patch bundle first.
 ./check-instagram-update.sh
 JAVA_BIN="$(awk -F= '/^CLI_JAVA=/{print $2}' .update-state)"
 if [[ "$JAVA_BIN" == */* ]]; then
@@ -32,10 +31,8 @@ fi
 
 state_get() {
   local key="$1"
-  if [[ -f "$STATE_FILE" ]]; then
-    awk -F= -v key="$key" '$1 == key { print $2 }' "$STATE_FILE"
-  fi
-  return 0
+  [[ -f "$STATE_FILE" ]] || return 0
+  awk -F= -v key="$key" '$1 == key { print $2 }' "$STATE_FILE"
 }
 
 state_set() {
@@ -150,8 +147,8 @@ patch_instagram() {
   echo "Using compatible Instagram bundle: $downloaded"
   echo "Merging APK splits..."
   if ! "$JAVA_BIN" -jar APKEditor.jar m -f -i "$downloaded" -o "$input"; then
-      die "Could not merge Instagram $version."
-    fi
+    die "Could not merge Instagram $version."
+  fi
   [[ -f "$GRAMFORGE_KEYSTORE" ]] || die "Signing keystore not found: $GRAMFORGE_KEYSTORE"
   echo "Applying GramForge profile with Morphe: Hide ads + configured navigation tabs"
   if ! "$JAVA_BIN" -jar cli/morphe-cli.jar patch "$input" \
