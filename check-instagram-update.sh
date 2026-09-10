@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Keep the Morphe CLI and the Instagram Morphe patch bundle current.
+# Keeps the Morphe CLI and Instagram patch bundle current.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 

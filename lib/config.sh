@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Shared GramForge runtime configuration loader.
-#
+# Loads shared GramForge runtime configuration.
 # Default location:
 #   ~/.config/gramforge/config.env
 
