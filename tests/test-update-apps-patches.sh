@@ -54,3 +54,11 @@ patch_args="$(<"$tmp_dir/patch-args")"
 [[ "$patch_args" == *'--exclusive'* ]]
 grep -Fqx 'INSTAGRAM_VERSION=124.0.0' "$tmp_dir/.patched-app-state"
 grep -Fqx 'INSTAGRAM_PATCH_PROFILE=brosssh-v2.8.1-v1.14.0-ads-nav-true-false-false-false-false-false-v1' "$tmp_dir/.patched-app-state"
+
+# A cached state entry must not suppress rebuilding when the patched artifact was
+# removed (for example by cleanup or an interrupted publish/deploy step).
+rm -f "$tmp_dir/apk/instagram-patched-124.0.0.apk" "$tmp_dir/patch-args"
+PATCH_ARGS_FILE="$tmp_dir/patch-args" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+
+test -f "$tmp_dir/apk/instagram-patched-124.0.0.apk"
+test -f "$tmp_dir/patch-args"

@@ -121,7 +121,7 @@ patch_instagram() {
   output="apk/instagram-patched-${version}.apk"
   previous="$(state_get INSTAGRAM_VERSION)"
   previous_profile="$(state_get INSTAGRAM_PATCH_PROFILE)"
-  if [[ "$previous" == "$version" && "$previous_profile" == "$patch_profile" ]]; then
+  if [[ "$previous" == "$version" && "$previous_profile" == "$patch_profile" && -f "$output" ]]; then
     echo "instagram: already patched $version ($patch_profile)"
     return
   fi

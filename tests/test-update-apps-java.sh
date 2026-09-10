@@ -11,7 +11,7 @@ mkdir -p "$tmp_dir/lib"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
 chmod +x "$tmp_dir/update-apps.sh"
 mkdir -p "$tmp_dir/bin" "$tmp_dir/cli" "$tmp_dir/patches" "$tmp_dir/apk"
-touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/test.keystore"
+touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/test.keystore" "$tmp_dir/apk/instagram-patched-123.0.0.apk"
 printf 'INSTAGRAM_VERSION=123.0.0\nINSTAGRAM_PATCH_PROFILE=brosssh-v2.8.1-v1.13.1-ads-nav-true-false-false-false-false-false-v1\n' > "$tmp_dir/.patched-app-state"
 
 printf '%s\n' '#!/usr/bin/env bash' 'printf "PATCHES_VERSION=v2.8.1\nPATCHES_ASSET=patches-2.8.1.mpp\nCLI_VERSION=v1.13.1\nCLI_JAVA=java\n" > .update-state' > "$tmp_dir/check-instagram-update.sh"
