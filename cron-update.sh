@@ -46,9 +46,18 @@ handle_update_failure() {
 
 LOG_FILE=".cron-update.log"
 FAILURE_STATE=".cron-failure-state"
+NOTIFY_STATE=".cron-notify-state"
 before_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
 before_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
 before="$before_version|$before_profile"
+
+# Seed the notification checkpoint from the already-patched state on upgrade so
+# existing deployments do not re-announce their current APK. New patch/profile
+# changes only advance this checkpoint after publishing and Matrix delivery both
+# succeed, so transient notification failures are retried on the next run.
+if [[ ! -f "$NOTIFY_STATE" ]]; then
+  printf '%s\n' "$before" >"$NOTIFY_STATE"
+fi
 
 if ! ./update-apps.sh >"$LOG_FILE" 2>&1; then
   handle_update_failure
@@ -58,8 +67,9 @@ fi
 after_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
 after_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
 after="$after_version|$after_profile"
+notified="$(cat "$NOTIFY_STATE" 2>/dev/null || true)"
 
-if [[ -n "$after_version" && "$after" != "$before" ]]; then
+if [[ -n "$after_version" && "$after" != "$notified" ]]; then
   apk="apk/instagram-patched-$after_version.apk"
   [[ -f "$apk" ]] || { printf 'Expected patched APK not found: %s\n' "$apk" >&2; exit 1; }
 
@@ -72,6 +82,7 @@ if [[ -n "$after_version" && "$after" != "$before" ]]; then
   fi
 
   matrix_send "GramForge APK ready" "$message"
+  printf '%s\n' "$after" >"$NOTIFY_STATE"
 fi
 
 : >"$FAILURE_STATE"
