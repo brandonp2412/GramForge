@@ -10,18 +10,19 @@ CLI_DIR="cli"
 PATCHES_REPO="brosssh/morphe-patches"
 CLI_REPO="MorpheApp/morphe-desktop"
 
-patches_last="none"
-patches_asset_last=""
-cli_last="none"
-cli_java="java"
-if [[ -f "$STATE_FILE" ]]; then
-  # shellcheck disable=SC1090
-  source "$STATE_FILE"
-  patches_last="${PATCHES_VERSION:-none}"
-  patches_asset_last="${PATCHES_ASSET:-}"
-  cli_last="${CLI_VERSION:-none}"
-  cli_java="${CLI_JAVA:-java}"
-fi
+state_value() {
+  local key="$1"
+  [[ -f "$STATE_FILE" ]] || return 0
+  awk -F= -v key="$key" '$1 == key { print substr($0, length($1) + 2); exit }' "$STATE_FILE"
+}
+
+patches_last="$(state_value PATCHES_VERSION)"
+patches_asset_last="$(state_value PATCHES_ASSET)"
+cli_last="$(state_value CLI_VERSION)"
+cli_java="$(state_value CLI_JAVA)"
+patches_last="${patches_last:-none}"
+cli_last="${cli_last:-none}"
+cli_java="${cli_java:-java}"
 
 save_state() {
   cat > "$STATE_FILE" <<EOF
