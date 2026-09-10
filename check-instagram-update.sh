@@ -58,7 +58,11 @@ fi
 patches_changed=0
 cli_changed=0
 
-read -r patches_tag patches_asset patches_url <<< "$(gh_latest_asset "$PATCHES_REPO" '.mpp' | tr '\n' ' ')"
+patches_release="$(gh_latest_asset "$PATCHES_REPO" '.mpp')"
+mapfile -t patches_release_lines <<< "$patches_release"
+patches_tag="${patches_release_lines[0]}"
+patches_asset="${patches_release_lines[1]}"
+patches_url="${patches_release_lines[2]}"
 if [[ "$patches_tag" == "$patches_last" && -f "$PATCHES_DIR/$patches_asset" ]]; then
   printf 'Instagram Morphe patches: no update (%s).\n' "$patches_tag"
 else
@@ -73,7 +77,11 @@ else
   patches_changed=1
 fi
 
-read -r cli_tag cli_asset cli_url <<< "$(gh_latest_asset "$CLI_REPO" '.jar' | tr '\n' ' ')"
+cli_release="$(gh_latest_asset "$CLI_REPO" '.jar')"
+mapfile -t cli_release_lines <<< "$cli_release"
+cli_tag="${cli_release_lines[0]}"
+cli_asset="${cli_release_lines[1]}"
+cli_url="${cli_release_lines[2]}"
 if [[ "$cli_tag" == "$cli_last" && -f "$CLI_DIR/morphe-cli.jar" ]]; then
   printf 'Morphe CLI: no update (%s).\n' "$cli_tag"
 else
