@@ -67,7 +67,12 @@ if [[ "$patches_tag" == "$patches_last" && -f "$PATCHES_DIR/$patches_asset" ]]; 
   printf 'Instagram Morphe patches: no update (%s).\n' "$patches_tag"
 else
   printf 'Instagram Morphe patches: %s -> %s\n' "$patches_last" "$patches_tag"
-  curl -sfL -o "$PATCHES_DIR/$patches_asset" "$patches_url"
+  patch_tmp="$(mktemp "$PATCHES_DIR/.${patches_asset}.XXXXXX")"
+  if ! curl -sfL -o "$patch_tmp" "$patches_url"; then
+    rm -f "$patch_tmp"
+    exit 1
+  fi
+  mv "$patch_tmp" "$PATCHES_DIR/$patches_asset"
   if [[ -n "$patches_asset_last" && "$patches_asset_last" != "$patches_asset" ]]; then
     rm -f "$PATCHES_DIR/$patches_asset_last"
   fi
