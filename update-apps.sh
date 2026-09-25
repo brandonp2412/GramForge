@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Patches a newly supported Instagram release when one is available.
+# Builds GramForge from the latest verified FeurStagram base plus our nav profile.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 # shellcheck source=lib/config.sh
@@ -12,8 +12,8 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"; }
 need jq
 need curl
-need unzip
 need python3
+need sha256sum
 [[ -f APKEditor.jar ]] || die "APKEditor.jar is missing from the repo root."
 
 case "${1:-instagram}" in
@@ -29,10 +29,15 @@ else
   JAVA_BIN="$(command -v "$JAVA_BIN")" || die "The Java runtime recorded in .update-state is unavailable: $JAVA_BIN"
 fi
 
+update_state_get() {
+  local key="$1"
+  awk -F= -v key="$key" '$1 == key { print substr($0, length($1) + 2); exit }' .update-state
+}
+
 state_get() {
   local key="$1"
   [[ -f "$STATE_FILE" ]] || return 0
-  awk -F= -v key="$key" '$1 == key { print $2 }' "$STATE_FILE"
+  awk -F= -v key="$key" '$1 == key { print substr($0, length($1) + 2); exit }' "$STATE_FILE"
 }
 
 state_set() {
@@ -45,131 +50,108 @@ state_set() {
   mv "$tmp" "$STATE_FILE"
 }
 
-instagram_version() {
-  "$JAVA_BIN" -jar cli/morphe-cli.jar list-versions \
-    --patches patches/instagram.mpp -f com.instagram.android 2>&1 |
-    sed -n '/Most common compatible versions:/{n;s/^[[:space:]]*//;s/ .*//;p;q;}'
+apk_info_value() {
+  local apk="$1" key="$2"
+  "$JAVA_BIN" -jar APKEditor.jar info -i "$apk" 2>/dev/null |
+    sed -n "s/^$key=\"\(.*\)\"$/\1/p" | head -n1
 }
 
-download_instagram_bundle() {
-  local version="$1" target="apk/instagram-$1.xapk"
-  local tmp_dir apkeep_bin downloaded manifest package_name version_name
-
-  [[ -x tools/ensure-apkeep.sh ]] || die "tools/ensure-apkeep.sh is missing or not executable."
-  apkeep_bin="$(./tools/ensure-apkeep.sh)"
-  tmp_dir="$(mktemp -d "apk/.instagram-$version.XXXXXX")"
-
-  echo "Downloading Instagram $version arm64-v8a with apkeep..."
-  if ! "$apkeep_bin" -a "com.instagram.android@$version" -d apk-pure -o 'arch=arm64-v8a' "$tmp_dir"; then
-    rm -rf "$tmp_dir"
-    die "Could not automatically download Instagram $version with apkeep."
-  fi
-
-  downloaded="$(find "$tmp_dir" -maxdepth 1 -type f \( -name '*.xapk' -o -name '*.apkm' \) -print -quit)"
-  [[ -n "$downloaded" && -f "$downloaded" ]] || {
-    rm -rf "$tmp_dir"
-    die "apkeep completed without producing an Instagram bundle."
-  }
-
-  manifest="$(unzip -p "$downloaded" manifest.json 2>/dev/null || true)"
-  [[ -n "$manifest" ]] || {
-    rm -rf "$tmp_dir"
-    die "Downloaded Instagram bundle has no manifest.json."
-  }
-  package_name="$(jq -r '.package_name // .package // empty' <<<"$manifest")"
-  version_name="$(jq -r '.version_name // .versionName // empty' <<<"$manifest")"
-  [[ "$package_name" == "com.instagram.android" ]] || {
-    rm -rf "$tmp_dir"
-    die "Downloaded bundle package is $package_name, expected com.instagram.android."
-  }
-  [[ "$version_name" == "$version" ]] || {
-    rm -rf "$tmp_dir"
-    die "Downloaded bundle version is $version_name, expected $version."
-  }
-  if ! python3 - "$downloaded" <<'PY'
-import io
-import sys
-import zipfile
-
-with zipfile.ZipFile(sys.argv[1]) as outer:
-    base_name = next((name for name in outer.namelist() if name == 'com.instagram.android.apk' or name.endswith('/com.instagram.android.apk')), None)
-    if base_name is None:
-        raise SystemExit(1)
-    base = outer.read(base_name)
-with zipfile.ZipFile(io.BytesIO(base)) as apk:
-    raise SystemExit(0 if any(name.startswith('lib/arm64-v8a/') for name in apk.namelist()) else 1)
-PY
-  then
-    rm -rf "$tmp_dir"
-    die "Downloaded Instagram bundle does not contain arm64-v8a native libraries."
-  fi
-
-  mv "$downloaded" "$target"
-  rm -rf "$tmp_dir"
-  echo "Downloaded and verified Instagram bundle: $target"
+verify_patch_report() {
+  local report="$1"
+  jq -e '
+    .packageName == "com.instagram.android"
+    and ([.patchingSteps[] | select(.success != true)] | length == 0)
+    and ([.failedPatches[]?] | length == 0)
+    and ([.appliedPatches[]? | select(.name == "Hide navigation buttons")] | length == 1)
+  ' "$report" >/dev/null
 }
 
 patch_instagram() {
-  local version input output previous previous_profile source downloaded
-  local patches_version cli_version patch_profile
-  patches_version="$(awk -F= '/^PATCHES_VERSION=/{print $2}' .update-state)"
-  cli_version="$(awk -F= '/^CLI_VERSION=/{print $2}' .update-state)"
-  patch_profile="brosssh-${patches_version:-unknown}-${cli_version:-unknown}-ads-nav-${HIDE_HOME}-${HIDE_REELS}-${HIDE_DIRECT}-${HIDE_SEARCH}-${HIDE_PROFILE}-${HIDE_CREATE}-v1"
-  version="$(instagram_version)"
-  [[ -n "$version" ]] || die "Could not determine the supported Instagram version."
-  input="apk/instagram-${version}-arm64.apk"
-  output="apk/instagram-patched-${version}.apk"
+  local feur_tag feur_asset feur_base version package_name
+  local patches_version cli_version patch_profile output previous previous_profile
+  local apktool profile_patcher normalizer tmp_dir decoded rebuilt normalized normalized_cache report
+
+  feur_tag="$(update_state_get FEUR_TAG)"
+  feur_asset="$(update_state_get FEUR_ASSET)"
+  patches_version="$(update_state_get PATCHES_VERSION)"
+  cli_version="$(update_state_get CLI_VERSION)"
+  [[ -n "$feur_tag" && -n "$feur_asset" ]] || die "FeurStagram release state is incomplete."
+
+  feur_base=".tools/feurstagram/$feur_asset"
+  [[ -f "$feur_base" ]] || die "FeurStagram base APK is missing: $feur_base"
+
+  package_name="$(apk_info_value "$feur_base" package)"
+  version="$(apk_info_value "$feur_base" VersionName)"
+  [[ "$package_name" == "com.instagram.android" ]] || die "FeurStagram base package is $package_name, expected com.instagram.android."
+  [[ -n "$version" ]] || die "Could not read Instagram version from $feur_base."
+
+  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-${cli_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v2"
+  output="apk/instagram-patched-$version.apk"
   previous="$(state_get INSTAGRAM_VERSION)"
   previous_profile="$(state_get INSTAGRAM_PATCH_PROFILE)"
+
   if [[ "$previous" == "$version" && "$previous_profile" == "$patch_profile" && -f "$output" ]]; then
     echo "instagram: already patched $version ($patch_profile)"
     return
   fi
 
   echo "instagram: ${previous:-never patched}/${previous_profile:-no profile} -> $version/$patch_profile"
-  source=""
-  for candidate in "apk/instagram-$version.apkm" "apk/instagram-$version.xapk"; do
-    [[ -f "$candidate" ]] && source="$candidate" && break
-  done
-  if [[ -z "$source" ]]; then
-    while IFS= read -r info; do
-      if [[ "$(jq -r '.release_version // empty' "$info")" == "$version" ]]; then
-        source="$(dirname "$info")"
-        break
-      fi
-    done < <(find apk -mindepth 2 -maxdepth 2 -name info.json -type f)
+
+  tmp_dir="$(mktemp -d "apk/.gramforge-$version.XXXXXX")"
+  report="$tmp_dir/nav-report.json"
+  normalized_cache=".tools/feurstagram/gramforge-$feur_tag-profile-v2.apk"
+
+  if [[ -f "$normalized_cache" ]] &&
+      [[ "$(apk_info_value "$normalized_cache" package)" == "com.instagram.android" ]] &&
+      [[ "$(apk_info_value "$normalized_cache" VersionName)" == "$version" ]]; then
+    echo "Reusing normalized FeurStagram base: $normalized_cache"
+  else
+    rm -f "$normalized_cache"
+    [[ -x tools/ensure-apktool.sh ]] || { rm -rf "$tmp_dir"; die "tools/ensure-apktool.sh is missing or not executable."; }
+    apktool="$(./tools/ensure-apktool.sh)"
+    profile_patcher="${GRAMFORGE_PROFILE_PATCHER:-tools/patch-feurstagram-profile.py}"
+    normalizer="${GRAMFORGE_APK_NORMALIZER:-tools/normalize-apk.py}"
+    [[ -f "$profile_patcher" ]] || { rm -rf "$tmp_dir"; die "Profile patcher not found: $profile_patcher"; }
+    [[ -f "$normalizer" ]] || { rm -rf "$tmp_dir"; die "APK normalizer not found: $normalizer"; }
+
+    decoded="$tmp_dir/decoded"
+    rebuilt="$tmp_dir/feur-profile.apk"
+    normalized="$tmp_dir/feur-profile-normalized.apk"
+
+    echo "Normalizing FeurStagram to GramForge's ads-only runtime profile..."
+    if ! "$JAVA_BIN" -jar "$apktool" d -f -o "$decoded" "$feur_base"; then
+      rm -rf "$tmp_dir"
+      die "Could not decode FeurStagram $feur_tag."
+    fi
+    if ! python3 "$profile_patcher" "$decoded"; then
+      rm -rf "$tmp_dir"
+      die "FeurStagram internals changed; refusing to build an unverified profile."
+    fi
+    if ! "$JAVA_BIN" -jar "$apktool" b "$decoded" -o "$rebuilt"; then
+      rm -rf "$tmp_dir"
+      die "Could not rebuild the normalized FeurStagram APK."
+    fi
+    if ! python3 "$normalizer" "$rebuilt" "$normalized"; then
+      rm -rf "$tmp_dir"
+      die "Could not normalize rebuilt APK ZIP metadata."
+    fi
+    mv "$normalized" "$normalized_cache"
   fi
-  if [[ -z "$source" ]]; then
-    download_instagram_bundle "$version"
-    source="apk/instagram-$version.xapk"
+
+  [[ -f "$GRAMFORGE_KEYSTORE" ]] || { rm -rf "$tmp_dir"; die "Signing keystore not found: $GRAMFORGE_KEYSTORE"; }
+  echo "Applying GramForge navigation profile with Morphe..."
+  if ! "$JAVA_BIN" -jar cli/morphe-cli.jar patch "$normalized_cache"       -f       -p patches/instagram.mpp       -e "Hide navigation buttons"       -O hideHome="$HIDE_HOME"       -O hideReels="$HIDE_REELS"       -O hideDirect="$HIDE_DIRECT"       -O hideSearch="$HIDE_SEARCH"       -O hideProfile="$HIDE_PROFILE"       -O hideCreate="$HIDE_CREATE"       --bytecode-mode STRIP_FAST       --exclusive       -r "$report"       -o "$output"       --keystore "$GRAMFORGE_KEYSTORE"       --keystore-password "$GRAMFORGE_KEYSTORE_PASSWORD"       --keystore-entry-alias "$GRAMFORGE_KEY_ALIAS"       --keystore-entry-password "$GRAMFORGE_KEY_PASSWORD"; then
+    rm -rf "$tmp_dir"
+    die "Navigation patching/signing failed; installed-state metadata was not updated."
   fi
-  downloaded="$source"
-  echo "Using compatible Instagram bundle: $downloaded"
-  echo "Merging APK splits..."
-  if ! "$JAVA_BIN" -jar APKEditor.jar m -f -i "$downloaded" -o "$input"; then
-    die "Could not merge Instagram $version."
+
+  if ! verify_patch_report "$report"; then
+    rm -f "$output"
+    rm -rf "$tmp_dir"
+    die "Morphe report did not prove the expected navigation patch applied cleanly."
   fi
-  [[ -f "$GRAMFORGE_KEYSTORE" ]] || die "Signing keystore not found: $GRAMFORGE_KEYSTORE"
-  echo "Applying GramForge profile with Morphe: Hide ads + configured navigation tabs"
-  if ! "$JAVA_BIN" -jar cli/morphe-cli.jar patch "$input" \
-      -p patches/instagram.mpp \
-      -e "Hide ads" \
-      -e "Hide navigation buttons" \
-      -O hideHome="$HIDE_HOME" \
-      -O hideReels="$HIDE_REELS" \
-      -O hideDirect="$HIDE_DIRECT" \
-      -O hideSearch="$HIDE_SEARCH" \
-      -O hideProfile="$HIDE_PROFILE" \
-      -O hideCreate="$HIDE_CREATE" \
-      --bytecode-mode STRIP_FAST \
-      --exclusive \
-      -o "$output" \
-      --keystore "$GRAMFORGE_KEYSTORE" \
-      --keystore-password "$GRAMFORGE_KEYSTORE_PASSWORD" \
-      --keystore-entry-alias "$GRAMFORGE_KEY_ALIAS" \
-      --keystore-entry-password "$GRAMFORGE_KEY_PASSWORD"; then
-    die "Patching failed; INSTAGRAM_VERSION was not updated."
-  fi
+
+  rm -rf "$tmp_dir"
   state_set INSTAGRAM_VERSION "$version"
   state_set INSTAGRAM_PATCH_PROFILE "$patch_profile"
   echo "instagram: created $output"

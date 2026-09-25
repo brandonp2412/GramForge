@@ -21,7 +21,7 @@ The default profile:
 - `curl`, `jq`, `unzip`, and standard Unix tools
 - `APKEditor.jar` in the repository root
 
-GramForge automatically acquires the exact supported Instagram bundle when it is not already cached locally. It uses EFF's `apkeep` with APKPure as the source, requests the `arm64-v8a` variant, and verifies the downloaded package name and version before patching. The pinned `apkeep` binary is downloaded on demand and SHA-256 checked before execution.
+GramForge tracks the latest stable FeurStagram release as its current open-source ad-filtering base. The standard APK is selected from GitHub Releases, its GitHub-provided SHA-256 digest is verified, and its package/version are checked before patching. GramForge then normalizes FeurStagram to an ads-only runtime profile, disables FeurStagram-specific update/onboarding prompts, and applies the configured navigation changes with Morphe.
 
 Downloaded APKs, patch bundles, CLI jars, signing keys, logs, and runtime state are intentionally ignored by Git.
 
@@ -47,9 +47,9 @@ Navigation choices are also configurable with `HIDE_HOME`, `HIDE_REELS`, `HIDE_D
 ./update-apps.sh
 ```
 
-GramForge keeps Morphe Desktop and the Instagram Morphe patch bundle current, determines the supported Instagram version, obtains the matching Instagram bundle automatically when needed, merges it, applies the configured GramForge profile, and writes the result under `apk/`.
+GramForge keeps Morphe Desktop, the Morphe navigation patch bundle, and the FeurStagram base current. It downloads a pinned, SHA-256-verified Apktool release on demand, rewrites FeurStagram's runtime defaults so ads remain blocked while feed, Reels, Explore, stories, suggestions, and navigation stay otherwise stock, rebuilds the APK, normalizes its ZIP metadata, then force-applies the narrow Morphe navigation patch to the newer Instagram base. The Morphe result report must prove the navigation patch succeeded before build state is advanced.
 
-Existing `apk/instagram-<version>.apkm` or `apk/instagram-<version>.xapk` files are reused. Otherwise GramForge installs its pinned `apkeep` release under `.tools/`, downloads `com.instagram.android@<version>` from APKPure for `arm64-v8a`, verifies the bundle metadata, and continues without manual intervention.
+The final signed APK is written under apk/ with its Instagram version in the filename. Upstream changes that make the FeurStagram normalizer or navigation fingerprint stop matching fail the build instead of silently weakening the profile.
 
 ## Scheduled publishing
 

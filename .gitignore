@@ -14,6 +14,7 @@ config.env
 .patched-app-state
 .cron-update.log
 .cron-failure-state
+.cron-notify-state
 *.log
 
 # Downloaded/generated application artifacts
@@ -25,6 +26,10 @@ public/
 cli/
 patches/
 APKEditor.jar
+
+# Python cache
+__pycache__/
+*.pyc
 
 # Editor/OS noise
 .DS_Store

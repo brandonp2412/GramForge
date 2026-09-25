@@ -1,61 +1,65 @@
 #!/usr/bin/env bash
+# Regression test: updater selects and verifies the standard FeurStagram APK, never the clone.
 set -euo pipefail
-
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-cp "$repo_dir/update-apps.sh" "$tmp_dir/update-apps.sh"
-mkdir -p "$tmp_dir/lib" "$tmp_dir/tools" "$tmp_dir/bin" "$tmp_dir/cli" "$tmp_dir/patches" "$tmp_dir/apk"
-cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
-cp "$repo_dir/tools/ensure-apkeep.sh" "$tmp_dir/tools/ensure-apkeep.sh"
-chmod +x "$tmp_dir/update-apps.sh" "$tmp_dir/tools/ensure-apkeep.sh"
-touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/patches/instagram.mpp" "$tmp_dir/test.keystore"
-
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'printf "PATCHES_VERSION=v2.8.2\nPATCHES_ASSET=patches-2.8.2.mpp\nCLI_VERSION=v1.14.0\nCLI_JAVA=java\n" > .update-state' \
-  > "$tmp_dir/check-instagram-update.sh"
+cp "$repo_dir/check-instagram-update.sh" "$tmp_dir/check-instagram-update.sh"
 chmod +x "$tmp_dir/check-instagram-update.sh"
+mkdir -p "$tmp_dir/bin" "$tmp_dir/patches" "$tmp_dir/cli" "$tmp_dir/.tools/feurstagram"
+printf 'patch\n' > "$tmp_dir/patches/patches.mpp"
+ln -s patches.mpp "$tmp_dir/patches/instagram.mpp"
+touch "$tmp_dir/cli/morphe-cli.jar"
 
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'set -euo pipefail' \
-  'if [[ "${1:-}" == "--version" ]]; then printf "apkeep 1.0.0\n"; exit 0; fi' \
-  'printf "%s\n" "$*" > "$APKEEP_ARGS_FILE"' \
-  'out_dir="${!#}"' \
-  'python3 - "$out_dir" <<'"'"'PY'"'"'' \
-  'import io, json, pathlib, sys, zipfile' \
-  'out = pathlib.Path(sys.argv[1])' \
-  'base = io.BytesIO()' \
-  'with zipfile.ZipFile(base, "w") as z: z.writestr("lib/arm64-v8a/libtest.so", b"x")' \
-  'manifest = {"package_name":"com.instagram.android","version_name":"124.0.0"}' \
-  'with zipfile.ZipFile(out / "com.instagram.android@124.0.0@arm64-v8a.xapk", "w") as z:' \
-  '    z.writestr("manifest.json", json.dumps(manifest))' \
-  '    z.writestr("com.instagram.android.apk", base.getvalue())' \
-  'PY' \
-  > "$tmp_dir/bin/apkeep"
-chmod +x "$tmp_dir/bin/apkeep"
+cat > "$tmp_dir/.update-state" <<'EOF'
+PATCHES_VERSION=v-patches
+PATCHES_ASSET=patches.mpp
+CLI_VERSION=v-cli
+CLI_JAVA=java
+FEUR_TAG=none
+FEUR_ASSET=
+FEUR_DIGEST=
+EOF
 
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'set -euo pipefail' \
-  'args="$*"' \
-  'if [[ "$args" == *"list-versions"* ]]; then printf "Most common compatible versions:\n  124.0.0\n"; exit 0; fi' \
-  'if [[ "$args" == *"APKEditor.jar"* ]]; then while (($#)); do [[ "$1" == "-o" ]] && { shift; touch "$1"; exit 0; }; shift; done; fi' \
-  'if [[ "$args" == *"morphe-cli.jar patch"* ]]; then while (($#)); do [[ "$1" == "-o" ]] && { shift; touch "$1"; exit 0; }; shift; done; fi' \
-  'exit 0' \
-  > "$tmp_dir/bin/java"
+cat > "$tmp_dir/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+args="$*"
+if [[ "$args" == *"api.github.com/repos/brosssh/morphe-patches"* ]]; then
+  printf '{"tag_name":"v-patches","assets":[{"name":"patches.mpp","browser_download_url":"https://example.test/patches.mpp"}]}\n'
+  exit 0
+fi
+if [[ "$args" == *"api.github.com/repos/MorpheApp/morphe-desktop"* ]]; then
+  printf '{"tag_name":"v-cli","assets":[{"name":"morphe-cli.jar","browser_download_url":"https://example.test/morphe-cli.jar"}]}\n'
+  exit 0
+fi
+if [[ "$args" == *"api.github.com/repos/jean-voila/FeurStagram"* ]]; then
+  digest="$(printf 'feur-base\n' | sha256sum | awk '{print $1}')"
+  printf '{"tag_name":"v446-0-0-49-77","assets":[{"name":"feurstagram-446-clone.apk","browser_download_url":"https://example.test/clone.apk","digest":"sha256:%s"},{"name":"feurstagram-446.apk","browser_download_url":"https://example.test/standard.apk","digest":"sha256:%s"}]}\n' "$digest" "$digest"
+  exit 0
+fi
+
+out=""
+url="${!#}"
+while (($#)); do
+  if [[ "$1" == "-o" ]]; then shift; out="$1"; break; fi
+  shift
+done
+[[ "$url" == "https://example.test/standard.apk" ]]
+printf 'feur-base\n' > "$out"
+EOF
+chmod +x "$tmp_dir/bin/curl"
+
+cat > "$tmp_dir/bin/java" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
 chmod +x "$tmp_dir/bin/java"
 
-APKEEP_ARGS_FILE="$tmp_dir/apkeep-args" \
-GRAMFORGE_APKEEP_BIN="$tmp_dir/bin/apkeep" \
-GRAMFORGE_CONFIG_FILE=/dev/null \
-GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" \
-PATH="$tmp_dir/bin:$PATH" \
-"$tmp_dir/update-apps.sh" >/dev/null
+env PATH="$tmp_dir/bin:$PATH" "$tmp_dir/check-instagram-update.sh" >/dev/null
 
-grep -Fq -- '-a com.instagram.android@124.0.0 -d apk-pure -o arch=arm64-v8a' "$tmp_dir/apkeep-args"
-test -f "$tmp_dir/apk/instagram-124.0.0.xapk"
-test -f "$tmp_dir/apk/instagram-patched-124.0.0.apk"
-grep -Fqx 'INSTAGRAM_VERSION=124.0.0' "$tmp_dir/.patched-app-state"
+grep -Fqx 'feur-base' "$tmp_dir/.tools/feurstagram/feurstagram-446.apk"
+grep -Fqx 'FEUR_TAG=v446-0-0-49-77' "$tmp_dir/.update-state"
+grep -Fqx 'FEUR_ASSET=feurstagram-446.apk' "$tmp_dir/.update-state"
+! grep -Fq -- '-clone.apk' "$tmp_dir/.update-state"
