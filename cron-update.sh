@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+
+JAVA_TMP_DIR="${GRAMFORGE_JAVA_TMPDIR:-$PWD/.tools/java-tmp}"
+mkdir -p "$JAVA_TMP_DIR"
+export JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$JAVA_TMP_DIR${JAVA_TOOL_OPTIONS:+ $JAVA_TOOL_OPTIONS}"
+
 # shellcheck source=lib/config.sh
 source lib/config.sh
 

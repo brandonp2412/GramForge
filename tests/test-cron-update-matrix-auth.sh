@@ -15,7 +15,11 @@ printf 'INSTAGRAM_VERSION=2.0.0\nINSTAGRAM_PATCH_PROFILE=old-profile\n' > "$tmp_
 touch "$tmp_dir/apk/instagram-patched-2.0.0.apk"
 
 # A patch-profile change on the same Instagram version must still republish.
-printf '%s\n' '#!/usr/bin/env bash' 'printf "INSTAGRAM_VERSION=2.0.0\\nINSTAGRAM_PATCH_PROFILE=new-profile\\n" > .patched-app-state' > "$tmp_dir/update-apps.sh"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'printf "%s\n" "$JAVA_TOOL_OPTIONS" > "$JAVA_TMP_OPTS_FILE"' \
+  'printf "INSTAGRAM_VERSION=2.0.0\\nINSTAGRAM_PATCH_PROFILE=new-profile\\n" > .patched-app-state' \
+  > "$tmp_dir/update-apps.sh"
 chmod +x "$tmp_dir/update-apps.sh"
 
 printf '%s\n' \
@@ -27,6 +31,7 @@ printf '%s\n' \
 chmod +x "$tmp_dir/bin/curl"
 
 CURL_ARGS_FILE="$tmp_dir/curl-args" \
+JAVA_TMP_OPTS_FILE="$tmp_dir/java-tool-options" \
 PATH="$tmp_dir/bin:$PATH" \
 GRAMFORGE_CONFIG_FILE=/dev/null \
 MATRIX_HOMESERVER='https://matrix.test' \
@@ -36,6 +41,8 @@ APK_PUBLIC_DIR="$tmp_dir/public" \
 APK_PUBLIC_URL='http://apks.test' \
 "$tmp_dir/cron-update.sh"
 
+test -d "$tmp_dir/.tools/java-tmp"
+grep -Fq -- "-Djava.io.tmpdir=$tmp_dir/.tools/java-tmp" "$tmp_dir/java-tool-options"
 grep -Fq 'GramForge APK ready' "$tmp_dir/curl-args"
 grep -Fq 'http://apks.test/instagram-patched-2.0.0-e3b0c44298fc.apk' "$tmp_dir/curl-args"
 test -f "$tmp_dir/public/instagram-patched-2.0.0-e3b0c44298fc.apk"
