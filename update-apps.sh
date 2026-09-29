@@ -69,7 +69,7 @@ verify_patch_report() {
 patch_instagram() {
   local feur_tag feur_asset feur_base version package_name
   local patches_version cli_version patch_profile output previous previous_profile
-  local apktool profile_patcher normalizer tmp_dir decoded rebuilt normalized normalized_cache report
+  local apktool profile_patcher normalizer tmp_dir framework_dir decoded rebuilt normalized normalized_cache report
 
   feur_tag="$(update_state_get FEUR_TAG)"
   feur_asset="$(update_state_get FEUR_ASSET)"
@@ -98,6 +98,8 @@ patch_instagram() {
   echo "instagram: ${previous:-never patched}/${previous_profile:-no profile} -> $version/$patch_profile"
 
   tmp_dir="$(mktemp -d "apk/.gramforge-$version.XXXXXX")"
+  framework_dir="$tmp_dir/framework"
+  mkdir -p "$framework_dir"
   report="$tmp_dir/nav-report.json"
   normalized_cache=".tools/feurstagram/gramforge-$feur_tag-profile-v2.apk"
 
@@ -119,7 +121,7 @@ patch_instagram() {
     normalized="$tmp_dir/feur-profile-normalized.apk"
 
     echo "Normalizing FeurStagram to GramForge's ads-only runtime profile..."
-    if ! "$JAVA_BIN" -jar "$apktool" d -f -o "$decoded" "$feur_base"; then
+    if ! "$JAVA_BIN" -jar "$apktool" d -f -p "$framework_dir" -o "$decoded" "$feur_base"; then
       rm -rf "$tmp_dir"
       die "Could not decode FeurStagram $feur_tag."
     fi
@@ -127,7 +129,7 @@ patch_instagram() {
       rm -rf "$tmp_dir"
       die "FeurStagram internals changed; refusing to build an unverified profile."
     fi
-    if ! "$JAVA_BIN" -jar "$apktool" b "$decoded" -o "$rebuilt"; then
+    if ! "$JAVA_BIN" -jar "$apktool" b -p "$framework_dir" "$decoded" -o "$rebuilt"; then
       rm -rf "$tmp_dir"
       die "Could not rebuild the normalized FeurStagram APK."
     fi
