@@ -41,7 +41,7 @@ cat > "$tmp_dir/bin/java" <<'EOF'
 set -euo pipefail
 args="$*"
 if [[ "$args" == *"fake-apktool.jar d "* || "$args" == *"fake-apktool.jar b "* ]]; then
-  printf '%s\\n' "$args" >> "$APKTOOL_ARGS_FILE"
+  printf '%s\n' "$args" >> "$APKTOOL_ARGS_FILE"
 fi
 if [[ "$args" == *"APKEditor.jar info"* ]]; then
   printf 'package="com.instagram.android"\nVersionName="446.0.0.49.77"\n'
@@ -77,8 +77,8 @@ chmod +x "$tmp_dir/bin/java"
 PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 
 patch_args="$(<"$tmp_dir/patch-args")"
-grep -Eq 'fake-apktool\\.jar d .* -p apk/\\.gramforge-446\\.0\\.0\\.49\\.77\\.[^ ]+/framework ' "$tmp_dir/apktool-args"
-grep -Eq 'fake-apktool\\.jar b -p apk/\\.gramforge-446\\.0\\.0\\.49\\.77\\.[^ ]+/framework ' "$tmp_dir/apktool-args"
+grep -Eq 'fake-apktool\.jar d .* -p apk/\.gramforge-446\.0\.0\.49\.77\.[^ ]+/framework ' "$tmp_dir/apktool-args"
+grep -Eq 'fake-apktool\.jar b -p apk/\.gramforge-446\.0\.0\.49\.77\.[^ ]+/framework ' "$tmp_dir/apktool-args"
 [[ "$patch_args" != *'-e Hide ads'* ]]
 [[ "$patch_args" == *'-e Hide navigation buttons'* ]]
 [[ "$patch_args" == *'-O hideHome=true'* ]]
