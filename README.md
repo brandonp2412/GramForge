@@ -18,7 +18,7 @@ The default profile:
 
 - Bash
 - Java compatible with the current Morphe Desktop release
-- `curl`, `jq`, `unzip`, and standard Unix tools
+- `curl`, `jq`, `flock`, `unzip`, and standard Unix tools
 - `APKEditor.jar` in the repository root
 
 GramForge tracks the latest stable FeurStagram release as its current open-source ad-filtering base. The standard APK is selected from GitHub Releases, its GitHub-provided SHA-256 digest is verified, and its package/version are checked before patching. GramForge then normalizes FeurStagram to an ads-only runtime profile, disables FeurStagram-specific update/onboarding prompts, and applies the configured navigation changes with Morphe.

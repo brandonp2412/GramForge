@@ -14,7 +14,11 @@ need jq
 need curl
 need python3
 need sha256sum
+need flock
 [[ -f APKEditor.jar ]] || die "APKEditor.jar is missing from the repo root."
+
+exec 9> .gramforge-update.lock
+flock 9
 
 case "${1:-instagram}" in
   instagram) ;;
