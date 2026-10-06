@@ -49,19 +49,74 @@ handle_update_failure() {
   fi
 }
 
+apk_payload_fingerprint() {
+  local apk="$1"
+  [[ -f "$apk" ]] || return 1
+  python3 - "$apk" <<'PY'
+import hashlib
+import re
+import sys
+import zipfile
+
+path = sys.argv[1]
+
+def content_hash(archive, info):
+    digest = hashlib.sha256()
+    with archive.open(info) as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+rows = []
+dex_payloads = []
+with zipfile.ZipFile(path) as archive:
+    for info in archive.infolist():
+        if info.is_dir():
+            continue
+        name = info.filename
+        upper = name.upper()
+        if upper.startswith("META-INF/") and (
+            upper == "META-INF/MANIFEST.MF"
+            or upper.endswith((".SF", ".RSA", ".DSA", ".EC"))
+        ):
+            continue
+        digest = content_hash(archive, info)
+        if re.fullmatch(r"classes(?:\d+)?\.dex", name):
+            dex_payloads.append((digest, info.file_size))
+        else:
+            rows.append((name, info.file_size, digest))
+
+for digest, size in sorted(dex_payloads):
+    rows.append(("<dex>", size, digest))
+
+canonical = hashlib.sha256()
+for name, size, digest in sorted(rows):
+    canonical.update(name.encode("utf-8"))
+    canonical.update(b"\0")
+    canonical.update(str(size).encode("ascii"))
+    canonical.update(b"\0")
+    canonical.update(digest.encode("ascii"))
+    canonical.update(b"\n")
+print(canonical.hexdigest())
+PY
+}
+
 LOG_FILE=".cron-update.log"
 FAILURE_STATE=".cron-failure-state"
 NOTIFY_STATE=".cron-notify-state"
 before_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
-before_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
-before="$before_version|$before_profile"
+before_payload=""
+if [[ -n "$before_version" && -f "apk/instagram-patched-$before_version.apk" ]]; then
+  before_payload="$(apk_payload_fingerprint "apk/instagram-patched-$before_version.apk")"
+fi
 
-# Seed the notification checkpoint from the already-patched state on upgrade so
-# existing deployments do not re-announce their current APK. New patch/profile
-# changes only advance this checkpoint after publishing and Matrix delivery both
-# succeed, so transient notification failures are retried on the next run.
-if [[ ! -f "$NOTIFY_STATE" ]]; then
-  printf '%s\n' "$before" >"$NOTIFY_STATE"
+# Migrate the old version/profile checkpoint to a canonical APK payload fingerprint.
+# This deliberately ignores signing metadata, ZIP layout, and classesN.dex numbering,
+# so toolchain-only rebuilds do not masquerade as app updates.
+notified="$(cat "$NOTIFY_STATE" 2>/dev/null || true)"
+if [[ "$notified" != payload-v1:* && -n "$before_payload" ]]; then
+  notified="payload-v1:$before_payload"
+  printf '%s\n' "$notified" >"$NOTIFY_STATE"
 fi
 
 if ! ./update-apps.sh >"$LOG_FILE" 2>&1; then
@@ -70,14 +125,14 @@ if ! ./update-apps.sh >"$LOG_FILE" 2>&1; then
 fi
 
 after_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
-after_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
-after="$after_version|$after_profile"
+[[ -n "$after_version" ]] || { printf 'Patched Instagram version is missing after update.\n' >&2; exit 1; }
+apk="apk/instagram-patched-$after_version.apk"
+[[ -f "$apk" ]] || { printf 'Expected patched APK not found: %s\n' "$apk" >&2; exit 1; }
+after_payload="$(apk_payload_fingerprint "$apk")"
+after="payload-v1:$after_payload"
 notified="$(cat "$NOTIFY_STATE" 2>/dev/null || true)"
 
-if [[ -n "$after_version" && "$after" != "$notified" ]]; then
-  apk="apk/instagram-patched-$after_version.apk"
-  [[ -f "$apk" ]] || { printf 'Expected patched APK not found: %s\n' "$apk" >&2; exit 1; }
-
+if [[ "$after" != "$notified" ]]; then
   message="GramForge Instagram build is ready."
   if [[ "$publish_enabled" == true ]]; then
     build_hash="$(sha256sum "$apk" | awk '{print substr($1, 1, 12)}')"

@@ -13,8 +13,9 @@ chmod +x "$tmp_dir/update-apps.sh" "$tmp_dir/tools/ensure-apktool.sh"
 touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/test.keystore" "$tmp_dir/.tools/feurstagram/base.apk"
 touch "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk"
 
-profile='feur-v446-0-0-49-77-brosssh-v2.8.2-v1.16.0-ads-nav-true-false-false-false-false-false-v2'
-printf 'INSTAGRAM_VERSION=446.0.0.49.77\nINSTAGRAM_PATCH_PROFILE=%s\n' "$profile" > "$tmp_dir/.patched-app-state"
+legacy_profile='feur-v446-0-0-49-77-brosssh-v2.8.2-v1.16.0-ads-nav-true-false-false-false-false-false-v2'
+profile='feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v2'
+printf 'INSTAGRAM_VERSION=446.0.0.49.77\nINSTAGRAM_PATCH_PROFILE=%s\n' "$legacy_profile" > "$tmp_dir/.patched-app-state"
 
 cat > "$tmp_dir/check-instagram-update.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -31,4 +32,12 @@ EOF
 chmod +x "$tmp_dir/bin/java"
 
 output="$(GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh")"
+grep -Fqx "instagram: migrated legacy profile without rebuilding 446.0.0.49.77 ($profile)" <<< "$output"
+grep -Fqx "INSTAGRAM_PATCH_PROFILE=$profile" "$tmp_dir/.patched-app-state"
+grep -Fqx 'INSTAGRAM_TOOLCHAIN_VERSION=v1.16.0' "$tmp_dir/.patched-app-state"
+
+# A patcher-only version update is maintenance, not a new GramForge app profile.
+sed -i 's/CLI_VERSION=v1.16.0/CLI_VERSION=v1.18.1/' "$tmp_dir/check-instagram-update.sh"
+output="$(GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh")"
 grep -Fqx "instagram: already patched 446.0.0.49.77 ($profile)" <<< "$output"
+grep -Fqx 'INSTAGRAM_TOOLCHAIN_VERSION=v1.16.0' "$tmp_dir/.patched-app-state"

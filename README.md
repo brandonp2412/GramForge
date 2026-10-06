@@ -53,6 +53,6 @@ The final signed APK is written under apk/ with its Instagram version in the fil
 
 ## Scheduled publishing
 
-`cron-update.sh` runs the same build, publishes a changed APK when `APK_PUBLIC_DIR` and `APK_PUBLIC_URL` are configured, and sends a Matrix notification using the configured homeserver, room ID, and access token.
+`cron-update.sh` runs the same build, publishes a changed APK when `APK_PUBLIC_DIR` and `APK_PUBLIC_URL` are configured, and sends a Matrix notification using the configured homeserver, room ID, and access token. Notifications are keyed to a canonical APK payload fingerprint rather than the raw archive hash, so signing metadata, ZIP layout, DEX renumbering, and patcher-only tool upgrades do not get announced as app updates.
 
 No deployment hostname, room ID, access token, signing key, or local machine path is stored in the repository.

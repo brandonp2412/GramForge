@@ -72,7 +72,7 @@ verify_patch_report() {
 
 patch_instagram() {
   local feur_tag feur_asset feur_base version package_name
-  local patches_version cli_version patch_profile output previous previous_profile
+  local patches_version cli_version patch_profile legacy_profile_prefix legacy_profile_suffix legacy_body legacy_cli_version output previous previous_profile
   local apktool profile_patcher normalizer tmp_dir framework_dir decoded rebuilt normalized normalized_cache report
 
   feur_tag="$(update_state_get FEUR_TAG)"
@@ -89,7 +89,9 @@ patch_instagram() {
   [[ "$package_name" == "com.instagram.android" ]] || die "FeurStagram base package is $package_name, expected com.instagram.android."
   [[ -n "$version" ]] || die "Could not read Instagram version from $feur_base."
 
-  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-${cli_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v2"
+  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v2"
+  legacy_profile_prefix="feur-$feur_tag-brosssh-${patches_version:-unknown}-"
+  legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v2"
   output="apk/instagram-patched-$version.apk"
   previous="$(state_get INSTAGRAM_VERSION)"
   previous_profile="$(state_get INSTAGRAM_PATCH_PROFILE)"
@@ -97,6 +99,17 @@ patch_instagram() {
   if [[ "$previous" == "$version" && "$previous_profile" == "$patch_profile" && -f "$output" ]]; then
     echo "instagram: already patched $version ($patch_profile)"
     return
+  fi
+
+  if [[ "$previous" == "$version" && -f "$output" ]]; then
+    legacy_body="${previous_profile#"$legacy_profile_prefix"}"
+    legacy_cli_version="${legacy_body%"$legacy_profile_suffix"}"
+    if [[ "$legacy_body" != "$previous_profile" && "$legacy_cli_version" != "$legacy_body" && "$legacy_cli_version" == v* ]]; then
+      state_set INSTAGRAM_PATCH_PROFILE "$patch_profile"
+      state_set INSTAGRAM_TOOLCHAIN_VERSION "$legacy_cli_version"
+      echo "instagram: migrated legacy profile without rebuilding $version ($patch_profile)"
+      return
+    fi
   fi
 
   echo "instagram: ${previous:-never patched}/${previous_profile:-no profile} -> $version/$patch_profile"
@@ -160,6 +173,7 @@ patch_instagram() {
   rm -rf "$tmp_dir"
   state_set INSTAGRAM_VERSION "$version"
   state_set INSTAGRAM_PATCH_PROFILE "$patch_profile"
+  state_set INSTAGRAM_TOOLCHAIN_VERSION "${cli_version:-unknown}"
   echo "instagram: created $output"
 }
 

@@ -12,14 +12,26 @@ cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
 chmod +x "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/bin" "$tmp_dir/public" "$tmp_dir/apk"
 printf 'INSTAGRAM_VERSION=2.0.0\nINSTAGRAM_PATCH_PROFILE=old-profile\n' > "$tmp_dir/.patched-app-state"
-touch "$tmp_dir/apk/instagram-patched-2.0.0.apk"
+python3 - "$tmp_dir/apk/instagram-patched-2.0.0.apk" <<'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1], 'w') as apk:
+    apk.writestr('AndroidManifest.xml', b'v2')
+    apk.writestr('classes.dex', b'old-code')
+PY
 
-# A patch-profile change on the same Instagram version must still republish.
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'printf "%s\n" "$JAVA_TOOL_OPTIONS" > "$JAVA_TMP_OPTS_FILE"' \
-  'printf "INSTAGRAM_VERSION=2.0.0\\nINSTAGRAM_PATCH_PROFILE=new-profile\\n" > .patched-app-state' \
-  > "$tmp_dir/update-apps.sh"
+# A real patch-profile payload change on the same Instagram version must republish.
+cat > "$tmp_dir/update-apps.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$JAVA_TOOL_OPTIONS" > "$JAVA_TMP_OPTS_FILE"
+python3 - <<'PY'
+import zipfile
+with zipfile.ZipFile('apk/instagram-patched-2.0.0.apk', 'w') as apk:
+    apk.writestr('AndroidManifest.xml', b'v2')
+    apk.writestr('classes.dex', b'new-code')
+PY
+printf 'INSTAGRAM_VERSION=2.0.0\nINSTAGRAM_PATCH_PROFILE=new-profile\n' > .patched-app-state
+EOF
 chmod +x "$tmp_dir/update-apps.sh"
 
 printf '%s\n' \
@@ -44,14 +56,17 @@ APK_PUBLIC_URL='http://apks.test' \
 test -d "$tmp_dir/.tools/java-tmp"
 grep -Fq -- "-Djava.io.tmpdir=$tmp_dir/.tools/java-tmp" "$tmp_dir/java-tool-options"
 grep -Fq 'GramForge APK ready' "$tmp_dir/curl-args"
-grep -Fq 'http://apks.test/instagram-patched-2.0.0-e3b0c44298fc.apk' "$tmp_dir/curl-args"
-test -f "$tmp_dir/public/instagram-patched-2.0.0-e3b0c44298fc.apk"
-python3 - "$tmp_dir/curl-args" <<'PY'
+published_name="$(find "$tmp_dir/public" -maxdepth 1 -type f -name 'instagram-patched-2.0.0-*.apk' -printf '%f\n')"
+[[ -n "$published_name" ]]
+expected_url="http://apks.test/$published_name"
+grep -Fq "$expected_url" "$tmp_dir/curl-args"
+test -f "$tmp_dir/public/$published_name"
+python3 - "$tmp_dir/curl-args" "$expected_url" <<'PY'
 import json
 import pathlib
 import sys
 
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
 payload = next(json.loads(line) for line in lines if line.startswith('{'))
-assert payload['body'] == 'GramForge APK ready\n\nDownload APK: http://apks.test/instagram-patched-2.0.0-e3b0c44298fc.apk'
+assert payload['body'] == f'GramForge APK ready\n\nDownload APK: {sys.argv[2]}'
 PY
