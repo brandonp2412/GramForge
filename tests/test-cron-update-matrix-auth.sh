@@ -71,13 +71,12 @@ lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
 payload = next(json.loads(line) for line in lines if line.startswith('{'))
 assert payload['msgtype'] == 'm.text'
 assert payload['format'] == 'org.matrix.custom.html'
-assert '📦' in payload['body']
-assert '📝 Build highlights' in payload['body']
-assert '• 📱' in payload['body'] or '• 📦' in payload['body']
-assert '• 🛡️' in payload['body']
-assert '• 🧭' in payload['body']
+assert 'Instagram 2.0.0 is ready.' in payload['body']
+# Without a release metadata range, no change bullet may be inferred.
+assert '• ' not in payload['body']
+assert 'No applicable changelog entries' in payload['body']
 assert f'Download APK: {sys.argv[2]}' in payload['body']  # Fallback for plain-only clients
-assert '<ul>' in payload['formatted_body']
+assert '<ul>' not in payload['formatted_body']
 assert '<a href="' + sys.argv[2] + '">Download APK</a>' in payload['formatted_body']
 assert sys.argv[2] not in payload['formatted_body'].split('>Download APK')[1]
 PY
