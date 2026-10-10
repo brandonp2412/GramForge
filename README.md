@@ -53,6 +53,8 @@ The final signed APK is written under apk/ with its Instagram version in the fil
 
 ## Scheduled publishing
 
-`cron-update.sh` runs the same build, publishes a changed APK when `APK_PUBLIC_DIR` and `APK_PUBLIC_URL` are configured, and sends a Matrix notification using the configured homeserver, room ID, and access token. Notifications are keyed to a canonical APK payload fingerprint rather than the raw archive hash, so signing metadata, ZIP layout, DEX renumbering, and patcher-only tool upgrades do not get announced as app updates.
+`cron-update.sh` runs the same build, publishes a changed APK when `APK_PUBLIC_DIR` and `APK_PUBLIC_URL` are configured, and sends a Matrix notification using the configured homeserver, room ID, and access token. Notifications are keyed to a canonical APK payload fingerprint rather than the raw archive hash, so signing metadata, ZIP layout, DEX renumbering, and patcher-only tool upgrades do not get announced as app updates. Matrix messages include a clickable **Download APK** link (with a plain-text fallback) and emoji build highlights for the Instagram version, ad-filtering base, navigation profile, and relevant upstream FeurStagram release fixes. Highlights omit upstream onboarding/updater UI features that GramForge deliberately disables. Failure reports use escaped HTML log formatting. The last successfully announced version/profile is tracked separately, so failed Matrix sends preserve accurate changelog comparisons when retried.
+
+The Matrix notifier may be a shared account. Match its sender name and avatar to the GramForge room using its **room-specific member profile**, not its global account profile, to avoid changing the identity used in other notification rooms.
 
 No deployment hostname, room ID, access token, signing key, or local machine path is stored in the repository.

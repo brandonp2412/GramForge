@@ -27,10 +27,8 @@ fi
 
 matrix_send() {
   [[ "$matrix_enabled" == true ]] || return 0
-  local title=$1 message=$2
-  local txn payload
+  local payload=$1 txn
   txn="gramforge-$(date +%s%N)-$RANDOM"
-  payload="$(python3 -c 'import json, sys; print(json.dumps({"msgtype":"m.text","body":sys.argv[1] + "\n\n" + sys.argv[2]}, separators=(",",":")))' "$title" "$message")"
   curl -fsS -X PUT \
     -H "Authorization: Bearer $MATRIX_ACCESS_TOKEN" \
     -H "Content-Type: application/json" \
@@ -39,12 +37,15 @@ matrix_send() {
 }
 
 handle_update_failure() {
-  local fingerprint previous message
+  local fingerprint previous message payload
   fingerprint="$(sha256sum "$LOG_FILE" | awk '{print $1}')"
   previous="$(cat "$FAILURE_STATE" 2>/dev/null || true)"
   if [[ "$fingerprint" != "$previous" ]]; then
     message="$(tail -n 8 "$LOG_FILE" | head -c 3000)"
-    matrix_send "GramForge update needs attention" "$message" || true
+    if [[ "$matrix_enabled" == true ]]; then
+      payload="$(python3 lib/matrix_notification.py --title "GramForge update needs attention" --error-log "$message")"
+      matrix_send "$payload" || true
+    fi
     printf '%s\n' "$fingerprint" >"$FAILURE_STATE"
   fi
 }
@@ -104,7 +105,10 @@ PY
 LOG_FILE=".cron-update.log"
 FAILURE_STATE=".cron-failure-state"
 NOTIFY_STATE=".cron-notify-state"
+NOTIFY_METADATA=".cron-notify-metadata"
 before_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
+before_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
+before_release_tag="$(awk -F= '$1 == "FEUR_TAG" { print $2 }' .update-state 2>/dev/null || true)"
 before_payload=""
 if [[ -n "$before_version" && -f "apk/instagram-patched-$before_version.apk" ]]; then
   before_payload="$(apk_payload_fingerprint "apk/instagram-patched-$before_version.apk")"
@@ -119,12 +123,24 @@ if [[ "$notified" != payload-v1:* && -n "$before_payload" ]]; then
   printf '%s\n' "$notified" >"$NOTIFY_STATE"
 fi
 
+# Track the last successfully announced release, rather than the last build.
+# Otherwise a failed Matrix send loses its version/profile changelog on retry.
+if [[ ! -f "$NOTIFY_METADATA" && -n "$before_payload" && "$notified" == "payload-v1:$before_payload" ]]; then
+  printf 'INSTAGRAM_VERSION=%s\nINSTAGRAM_PATCH_PROFILE=%s\nFEUR_TAG=%s\n' \
+    "$before_version" "$before_profile" "$before_release_tag" >"$NOTIFY_METADATA"
+fi
+notified_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' "$NOTIFY_METADATA" 2>/dev/null || true)"
+notified_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' "$NOTIFY_METADATA" 2>/dev/null || true)"
+notified_release_tag="$(awk -F= '$1 == "FEUR_TAG" { print $2 }' "$NOTIFY_METADATA" 2>/dev/null || true)"
+
 if ! ./update-apps.sh >"$LOG_FILE" 2>&1; then
   handle_update_failure
   exit 1
 fi
 
 after_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
+after_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
+after_release_tag="$(awk -F= '$1 == "FEUR_TAG" { print $2 }' .update-state 2>/dev/null || true)"
 [[ -n "$after_version" ]] || { printf 'Patched Instagram version is missing after update.\n' >&2; exit 1; }
 apk="apk/instagram-patched-$after_version.apk"
 [[ -f "$apk" ]] || { printf 'Expected patched APK not found: %s\n' "$apk" >&2; exit 1; }
@@ -133,16 +149,26 @@ after="payload-v1:$after_payload"
 notified="$(cat "$NOTIFY_STATE" 2>/dev/null || true)"
 
 if [[ "$after" != "$notified" ]]; then
-  message="GramForge Instagram build is ready."
+  download_url=""
   if [[ "$publish_enabled" == true ]]; then
     build_hash="$(sha256sum "$apk" | awk '{print substr($1, 1, 12)}')"
     published_name="instagram-patched-$after_version-$build_hash.apk"
     install -m 0644 "$apk" "$APK_PUBLIC_DIR/$published_name"
-    message="Download APK: $APK_PUBLIC_URL/$published_name"
+    download_url="$APK_PUBLIC_URL/$published_name"
   fi
 
-  matrix_send "GramForge APK ready" "$message"
+  if [[ "$matrix_enabled" == true ]]; then
+    payload="$(python3 lib/matrix_notification.py \
+      --title "GramForge APK ready" \
+      --version "$after_version" --previous-version "$notified_version" \
+      --profile "$after_profile" --previous-profile "$notified_profile" \
+      --release-tag "$after_release_tag" --previous-release-tag "$notified_release_tag" \
+      --url "$download_url")"
+    matrix_send "$payload"
+  fi
   printf '%s\n' "$after" >"$NOTIFY_STATE"
+  printf 'INSTAGRAM_VERSION=%s\nINSTAGRAM_PATCH_PROFILE=%s\nFEUR_TAG=%s\n' \
+    "$after_version" "$after_profile" "$after_release_tag" >"$NOTIFY_METADATA"
 fi
 
 : >"$FAILURE_STATE"

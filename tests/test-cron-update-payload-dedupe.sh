@@ -9,6 +9,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 cp "$repo_dir/cron-update.sh" "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/lib" "$tmp_dir/bin" "$tmp_dir/apk" "$tmp_dir/public"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
+cp "$repo_dir/lib/matrix_notification.py" "$tmp_dir/lib/matrix_notification.py"
 chmod +x "$tmp_dir/cron-update.sh"
 
 printf 'INSTAGRAM_VERSION=2.0.0

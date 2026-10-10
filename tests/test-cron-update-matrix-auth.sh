@@ -9,6 +9,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 cp "$repo_dir/cron-update.sh" "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/lib"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
+cp "$repo_dir/lib/matrix_notification.py" "$tmp_dir/lib/matrix_notification.py"
 chmod +x "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/bin" "$tmp_dir/public" "$tmp_dir/apk"
 printf 'INSTAGRAM_VERSION=2.0.0\nINSTAGRAM_PATCH_PROFILE=old-profile\n' > "$tmp_dir/.patched-app-state"
@@ -68,5 +69,15 @@ import sys
 
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
 payload = next(json.loads(line) for line in lines if line.startswith('{'))
-assert payload['body'] == f'GramForge APK ready\n\nDownload APK: {sys.argv[2]}'
+assert payload['msgtype'] == 'm.text'
+assert payload['format'] == 'org.matrix.custom.html'
+assert '📦' in payload['body']
+assert '📝 Build highlights' in payload['body']
+assert '• 📱' in payload['body'] or '• 📦' in payload['body']
+assert '• 🛡️' in payload['body']
+assert '• 🧭' in payload['body']
+assert f'Download APK: {sys.argv[2]}' in payload['body']  # Fallback for plain-only clients
+assert '<ul>' in payload['formatted_body']
+assert '<a href="' + sys.argv[2] + '">Download APK</a>' in payload['formatted_body']
+assert sys.argv[2] not in payload['formatted_body'].split('>Download APK')[1]
 PY

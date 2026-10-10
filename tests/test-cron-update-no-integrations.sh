@@ -9,6 +9,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 cp "$repo_dir/cron-update.sh" "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/lib"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
+cp "$repo_dir/lib/matrix_notification.py" "$tmp_dir/lib/matrix_notification.py"
 chmod +x "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/apk"
 python3 - "$tmp_dir/apk/instagram-patched-1.0.0.apk" <<'PY'

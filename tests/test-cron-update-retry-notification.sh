@@ -9,6 +9,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 cp "$repo_dir/cron-update.sh" "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/lib"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
+cp "$repo_dir/lib/matrix_notification.py" "$tmp_dir/lib/matrix_notification.py"
 chmod +x "$tmp_dir/cron-update.sh"
 mkdir -p "$tmp_dir/bin" "$tmp_dir/apk"
 printf 'INSTAGRAM_VERSION=2.0.0\nINSTAGRAM_PATCH_PROFILE=old-profile\n' > "$tmp_dir/.patched-app-state"
@@ -59,9 +60,12 @@ set -e
 [[ "$first_status" -ne 0 ]]
 old_checkpoint="$(<"$tmp_dir/.cron-notify-state")"
 [[ "$old_checkpoint" == payload-v1:* ]]
+# Until send succeeds, the release baseline must stay at the last announcement.
+grep -Fxq 'INSTAGRAM_PATCH_PROFILE=old-profile' "$tmp_dir/.cron-notify-metadata"
 
 env "${common_env[@]}" "$tmp_dir/cron-update.sh"
 grep -Fxq '2' "$tmp_dir/curl-count"
 new_checkpoint="$(<"$tmp_dir/.cron-notify-state")"
 [[ "$new_checkpoint" == payload-v1:* ]]
 [[ "$new_checkpoint" != "$old_checkpoint" ]]
+grep -Fxq 'INSTAGRAM_PATCH_PROFILE=new-profile' "$tmp_dir/.cron-notify-metadata"
