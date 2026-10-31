@@ -61,12 +61,21 @@ apk_info_value() {
 }
 
 verify_patch_report() {
-  local report="$1"
-  jq -e '
-    .packageName == "com.instagram.android"
-    and ([.patchingSteps[] | select(.success != true)] | length == 0)
-    and ([.failedPatches[]?] | length == 0)
-    and ([.appliedPatches[]? | select(.name == "Hide navigation buttons")] | length == 1)
+  local report="$1" version="$2"
+  jq -e --arg version "$version" '
+    (.stepResults // .patchingSteps) as $steps
+    | .packageName == "com.instagram.android"
+      and .packageVersion == $version
+      and (.success == null or .success == true)
+      and ($steps | type == "array")
+      and ([$steps[]? | select(.success != true)] | length == 0)
+      and (["PATCHING", "REBUILDING", "SIGNING"] - [$steps[]?.step] | length == 0)
+      and (.failedPatches == [])
+      and (.appliedPatches |
+        if type == "array" then
+          map(if type == "string" then . elif type == "object" then .name else null end)
+          == ["Hide navigation buttons"]
+        else false end)
   ' "$report" >/dev/null
 }
 
@@ -89,9 +98,9 @@ patch_instagram() {
   [[ "$package_name" == "com.instagram.android" ]] || die "FeurStagram base package is $package_name, expected com.instagram.android."
   [[ -n "$version" ]] || die "Could not read Instagram version from $feur_base."
 
-  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v2"
+  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v3"
   legacy_profile_prefix="feur-$feur_tag-brosssh-${patches_version:-unknown}-"
-  legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v2"
+  legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v3"
   output="apk/instagram-patched-$version.apk"
   previous="$(state_get INSTAGRAM_VERSION)"
   previous_profile="$(state_get INSTAGRAM_PATCH_PROFILE)"
@@ -118,7 +127,7 @@ patch_instagram() {
   framework_dir="$tmp_dir/framework"
   mkdir -p "$framework_dir"
   report="$tmp_dir/nav-report.json"
-  normalized_cache=".tools/feurstagram/gramforge-$feur_tag-profile-v2.apk"
+  normalized_cache=".tools/feurstagram/gramforge-$feur_tag-profile-v3-home-$HIDE_HOME.apk"
 
   if [[ -f "$normalized_cache" ]] &&
       [[ "$(apk_info_value "$normalized_cache" package)" == "com.instagram.android" ]] &&
@@ -164,7 +173,8 @@ patch_instagram() {
     die "Navigation patching/signing failed; installed-state metadata was not updated."
   fi
 
-  if ! verify_patch_report "$report"; then
+  if ! verify_patch_report "$report" "$version"; then
+    install -m 0600 "$report" .tools/last-invalid-nav-report.json
     rm -f "$output"
     rm -rf "$tmp_dir"
     die "Morphe report did not prove the expected navigation patch applied cleanly."

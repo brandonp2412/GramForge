@@ -28,8 +28,9 @@ EOF
 chmod +x "$tmp_dir/check-instagram-update.sh"
 
 cat > "$tmp_dir/profile.py" <<'EOF'
-import pathlib, sys
+import os, pathlib, sys
 assert pathlib.Path(sys.argv[1]).is_dir()
+assert os.environ["HIDE_HOME"] == "true"
 EOF
 cat > "$tmp_dir/normalize.py" <<'EOF'
 import shutil, sys
@@ -91,7 +92,8 @@ grep -Eq 'fake-apktool\.jar b -p apk/\.gramforge-446\.0\.0\.49\.77\.[^ ]+/framew
 [[ "$patch_args" == *'--exclusive'* ]]
 [[ "$patch_args" == *' -f '* ]]
 grep -Fqx 'INSTAGRAM_VERSION=446.0.0.49.77' "$tmp_dir/.patched-app-state"
-grep -Fqx 'INSTAGRAM_PATCH_PROFILE=feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v2' "$tmp_dir/.patched-app-state"
+grep -Fqx 'INSTAGRAM_PATCH_PROFILE=feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v3' "$tmp_dir/.patched-app-state"
+test -f "$tmp_dir/.tools/feurstagram/gramforge-v446-0-0-49-77-profile-v3-home-true.apk"
 
 rm -f "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk" "$tmp_dir/patch-args"
 PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null

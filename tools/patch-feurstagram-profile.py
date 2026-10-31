@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Normalize FeurStagram's runtime defaults to GramForge's ads-only profile."""
 from __future__ import annotations
+import os
 import re
 import sys
 from pathlib import Path
@@ -44,6 +45,14 @@ def patch_config(path: Path) -> None:
         text = set_boolean_default(text, method, 1, 0)
     text = set_boolean_default(text, "isReelsTabShown", 0, 1)
     text = set_boolean_default(text, "isOnboardingDone", 0, 1)
+    if os.environ.get("HIDE_HOME") == "true":
+        text = replace_method(text, "isHomeTabShown", """.method public static isHomeTabShown()Z
+    .locals 1
+
+    const/4 v0, 0x0
+
+    return v0
+.end method""")
     text = replace_method(text, "navDefault", """.method public static navDefault(Ljava/lang/String;)Z
     .locals 1
 
@@ -69,6 +78,8 @@ def patch_reels_nav_default(path: Path) -> None:
     text = path.read_text()
     start, end = method_span(text, "installAll")
     body = text[start:end]
+    if os.environ.get("HIDE_HOME") == "true" and "Lcom/feurstagram/extension/Hiders$HomeTabHider;" not in body:
+        die("Hiders.installAll: HomeTabHider is not installed")
     pattern = r'(?s)(const-string v\d+, "nav_show_reels"(?:(?!nav_show_).){0,500}?const/4 v\d+, )0x0'
     updated, count = re.subn(pattern, r"\g<1>0x1", body, count=1)
     if count != 1:
@@ -109,7 +120,7 @@ def main() -> None:
     patch_reels_nav_default(find_one(root, "com/feurstagram/extension/Hiders.smali"))
     replace_with_run_callback(find_one(root, "com/feurstagram/extension/FollowPrompt.smali"), "maybeShow")
     replace_with_return(find_one(root, "com/feurstagram/extension/UpdateChecker.smali"), "checkWhatsNew")
-    print("FeurStagram profile normalized: ads on; other Feur blocks/prompts/updater off; nav visible")
+    print(f"FeurStagram profile normalized: ads on; other Feur blocks/prompts/updater off; Home hidden={os.environ.get('HIDE_HOME') == 'true'}")
 
 if __name__ == "__main__":
     main()
