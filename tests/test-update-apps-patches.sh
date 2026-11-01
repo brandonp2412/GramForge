@@ -9,6 +9,10 @@ cp "$repo_dir/update-apps.sh" "$tmp_dir/update-apps.sh"
 mkdir -p "$tmp_dir/lib" "$tmp_dir/tools" "$tmp_dir/bin" "$tmp_dir/cli" "$tmp_dir/patches" "$tmp_dir/apk" "$tmp_dir/.tools/feurstagram"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
 cp "$repo_dir/tools/ensure-apktool.sh" "$tmp_dir/tools/ensure-apktool.sh"
+mkdir -p "$tmp_dir/assets"
+cp -r "$repo_dir/assets/rotta-launcher" "$tmp_dir/assets/rotta-launcher"
+cp "$repo_dir/tools/patch-launcher-icon.py" "$tmp_dir/tools/patch-launcher-icon.py"
+icon_hash="$(python3 "$repo_dir/tools/patch-launcher-icon.py" --fingerprint "$repo_dir/assets/rotta-launcher")"
 chmod +x "$tmp_dir/update-apps.sh" "$tmp_dir/tools/ensure-apktool.sh"
 touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/patches/instagram.mpp" "$tmp_dir/test.keystore" "$tmp_dir/fake-apktool.jar"
 touch "$tmp_dir/.tools/feurstagram/feurstagram.apk"
@@ -31,6 +35,11 @@ cat > "$tmp_dir/profile.py" <<'EOF'
 import os, pathlib, sys
 assert pathlib.Path(sys.argv[1]).is_dir()
 assert os.environ["HIDE_HOME"] == "true"
+EOF
+cat > "$tmp_dir/icon.py" <<'EOF'
+import pathlib, sys
+assert pathlib.Path(sys.argv[1]).is_dir()
+assert pathlib.Path(sys.argv[2]).is_dir()
 EOF
 cat > "$tmp_dir/normalize.py" <<'EOF'
 import shutil, sys
@@ -75,7 +84,7 @@ exit 0
 EOF
 chmod +x "$tmp_dir/bin/java"
 
-PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 
 patch_args="$(<"$tmp_dir/patch-args")"
 grep -Eq 'fake-apktool\.jar d .* -p apk/\.gramforge-446\.0\.0\.49\.77\.[^ ]+/framework ' "$tmp_dir/apktool-args"
@@ -92,10 +101,10 @@ grep -Eq 'fake-apktool\.jar b -p apk/\.gramforge-446\.0\.0\.49\.77\.[^ ]+/framew
 [[ "$patch_args" == *'--exclusive'* ]]
 [[ "$patch_args" == *' -f '* ]]
 grep -Fqx 'INSTAGRAM_VERSION=446.0.0.49.77' "$tmp_dir/.patched-app-state"
-grep -Fqx 'INSTAGRAM_PATCH_PROFILE=feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v3' "$tmp_dir/.patched-app-state"
-test -f "$tmp_dir/.tools/feurstagram/gramforge-v446-0-0-49-77-profile-v3-home-true.apk"
+grep -Fqx "INSTAGRAM_PATCH_PROFILE=feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v4-rotta-$icon_hash" "$tmp_dir/.patched-app-state"
+test -f "$tmp_dir/.tools/feurstagram/gramforge-v446-0-0-49-77-profile-v4-home-true-rotta-$icon_hash.apk"
 
 rm -f "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk" "$tmp_dir/patch-args"
-PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 test -f "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk"
 test -f "$tmp_dir/patch-args"

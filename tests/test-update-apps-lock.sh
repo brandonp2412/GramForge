@@ -8,12 +8,17 @@ trap 'rm -rf "$tmp_dir"' EXIT
 cp "$repo_dir/update-apps.sh" "$tmp_dir/update-apps.sh"
 mkdir -p "$tmp_dir/lib" "$tmp_dir/bin" "$tmp_dir/apk" "$tmp_dir/.tools/feurstagram"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
+mkdir -p "$tmp_dir/tools"
+mkdir -p "$tmp_dir/assets"
+cp -r "$repo_dir/assets/rotta-launcher" "$tmp_dir/assets/rotta-launcher"
+cp "$repo_dir/tools/patch-launcher-icon.py" "$tmp_dir/tools/patch-launcher-icon.py"
+icon_hash="$(python3 "$repo_dir/tools/patch-launcher-icon.py" --fingerprint "$repo_dir/assets/rotta-launcher")"
 chmod +x "$tmp_dir/update-apps.sh"
 touch "$tmp_dir/APKEditor.jar" "$tmp_dir/test.keystore"
 touch "$tmp_dir/.tools/feurstagram/feurstagram.apk"
 touch "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk"
 
-profile='feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v3'
+profile="feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v4-rotta-$icon_hash"
 printf 'INSTAGRAM_VERSION=446.0.0.49.77\nINSTAGRAM_PATCH_PROFILE=%s\n' "$profile" > "$tmp_dir/.patched-app-state"
 
 cat > "$tmp_dir/check-instagram-update.sh" <<'EOF'

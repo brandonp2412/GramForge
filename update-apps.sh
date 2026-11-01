@@ -81,8 +81,8 @@ verify_patch_report() {
 
 patch_instagram() {
   local feur_tag feur_asset feur_base version package_name
-  local patches_version cli_version patch_profile legacy_profile_prefix legacy_profile_suffix legacy_body legacy_cli_version output previous previous_profile
-  local apktool profile_patcher normalizer tmp_dir framework_dir decoded rebuilt normalized normalized_cache report
+  local patches_version cli_version icon_fingerprint patch_profile legacy_profile_prefix legacy_profile_suffix legacy_body legacy_cli_version output previous previous_profile
+  local apktool profile_patcher icon_patcher normalizer tmp_dir framework_dir decoded rebuilt normalized normalized_cache report
 
   feur_tag="$(update_state_get FEUR_TAG)"
   feur_asset="$(update_state_get FEUR_ASSET)"
@@ -98,9 +98,10 @@ patch_instagram() {
   [[ "$package_name" == "com.instagram.android" ]] || die "FeurStagram base package is $package_name, expected com.instagram.android."
   [[ -n "$version" ]] || die "Could not read Instagram version from $feur_base."
 
-  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v3"
+  icon_fingerprint="$(python3 tools/patch-launcher-icon.py --fingerprint assets/rotta-launcher)"
+  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v4-rotta-$icon_fingerprint"
   legacy_profile_prefix="feur-$feur_tag-brosssh-${patches_version:-unknown}-"
-  legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v3"
+  legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v4-rotta-$icon_fingerprint"
   output="apk/instagram-patched-$version.apk"
   previous="$(state_get INSTAGRAM_VERSION)"
   previous_profile="$(state_get INSTAGRAM_PATCH_PROFILE)"
@@ -127,7 +128,7 @@ patch_instagram() {
   framework_dir="$tmp_dir/framework"
   mkdir -p "$framework_dir"
   report="$tmp_dir/nav-report.json"
-  normalized_cache=".tools/feurstagram/gramforge-$feur_tag-profile-v3-home-$HIDE_HOME.apk"
+  normalized_cache=".tools/feurstagram/gramforge-$feur_tag-profile-v4-home-$HIDE_HOME-rotta-$icon_fingerprint.apk"
 
   if [[ -f "$normalized_cache" ]] &&
       [[ "$(apk_info_value "$normalized_cache" package)" == "com.instagram.android" ]] &&
@@ -138,8 +139,10 @@ patch_instagram() {
     [[ -x tools/ensure-apktool.sh ]] || { rm -rf "$tmp_dir"; die "tools/ensure-apktool.sh is missing or not executable."; }
     apktool="$(./tools/ensure-apktool.sh)"
     profile_patcher="${GRAMFORGE_PROFILE_PATCHER:-tools/patch-feurstagram-profile.py}"
+    icon_patcher="${GRAMFORGE_ICON_PATCHER:-tools/patch-launcher-icon.py}"
     normalizer="${GRAMFORGE_APK_NORMALIZER:-tools/normalize-apk.py}"
     [[ -f "$profile_patcher" ]] || { rm -rf "$tmp_dir"; die "Profile patcher not found: $profile_patcher"; }
+    [[ -f "$icon_patcher" ]] || { rm -rf "$tmp_dir"; die "Launcher icon patcher not found: $icon_patcher"; }
     [[ -f "$normalizer" ]] || { rm -rf "$tmp_dir"; die "APK normalizer not found: $normalizer"; }
 
     decoded="$tmp_dir/decoded"
@@ -154,6 +157,10 @@ patch_instagram() {
     if ! python3 "$profile_patcher" "$decoded"; then
       rm -rf "$tmp_dir"
       die "FeurStagram internals changed; refusing to build an unverified profile."
+    fi
+    if ! python3 "$icon_patcher" "$decoded" assets/rotta-launcher; then
+      rm -rf "$tmp_dir"
+      die "Instagram launcher resources changed; refusing to build without Rotta's icon."
     fi
     if ! "$JAVA_BIN" -jar "$apktool" b -p "$framework_dir" "$decoded" -o "$rebuilt"; then
       rm -rf "$tmp_dir"

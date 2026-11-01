@@ -9,12 +9,16 @@ cp "$repo_dir/update-apps.sh" "$tmp_dir/update-apps.sh"
 mkdir -p "$tmp_dir/lib" "$tmp_dir/bin" "$tmp_dir/cli" "$tmp_dir/patches" "$tmp_dir/apk" "$tmp_dir/.tools/feurstagram" "$tmp_dir/tools"
 cp "$repo_dir/lib/config.sh" "$tmp_dir/lib/config.sh"
 cp "$repo_dir/tools/ensure-apktool.sh" "$tmp_dir/tools/ensure-apktool.sh"
+mkdir -p "$tmp_dir/assets"
+cp -r "$repo_dir/assets/rotta-launcher" "$tmp_dir/assets/rotta-launcher"
+cp "$repo_dir/tools/patch-launcher-icon.py" "$tmp_dir/tools/patch-launcher-icon.py"
+icon_hash="$(python3 "$repo_dir/tools/patch-launcher-icon.py" --fingerprint "$repo_dir/assets/rotta-launcher")"
 chmod +x "$tmp_dir/update-apps.sh" "$tmp_dir/tools/ensure-apktool.sh"
 touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/test.keystore" "$tmp_dir/.tools/feurstagram/base.apk"
 touch "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk"
 
-legacy_profile='feur-v446-0-0-49-77-brosssh-v2.8.2-v1.16.0-ads-nav-true-false-false-false-false-false-v3'
-profile='feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v3'
+legacy_profile="feur-v446-0-0-49-77-brosssh-v2.8.2-v1.16.0-ads-nav-true-false-false-false-false-false-v4-rotta-$icon_hash"
+profile="feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v4-rotta-$icon_hash"
 printf 'INSTAGRAM_VERSION=446.0.0.49.77\nINSTAGRAM_PATCH_PROFILE=%s\n' "$legacy_profile" > "$tmp_dir/.patched-app-state"
 
 cat > "$tmp_dir/check-instagram-update.sh" <<'EOF'

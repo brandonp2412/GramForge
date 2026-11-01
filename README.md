@@ -49,6 +49,8 @@ Navigation choices are also configurable with `HIDE_HOME`, `HIDE_REELS`, `HIDE_D
 
 GramForge keeps Morphe Desktop, the Morphe navigation patch bundle, and the FeurStagram base current. It downloads a pinned, SHA-256-verified Apktool release on demand, rewrites FeurStagram's runtime defaults so ads remain blocked while feed, Reels, Explore, stories, suggestions, and navigation stay otherwise stock, rebuilds the APK, normalizes its ZIP metadata, then force-applies the narrow Morphe navigation patch to the newer Instagram base. The Morphe result report must prove the navigation patch succeeded before build state is advanced.
 
+The patched launcher icon uses the teal Rigby artwork from Rotta, including its approved smaller foreground, at every legacy and adaptive density. GramForge replaces the original Instagram launcher resources during Apktool rebuilding, removes the old monochrome glyph, and fingerprints the icon assets so changes force a fresh build.
+
 The final signed APK is written under apk/ with its Instagram version in the filename. Upstream changes that make the FeurStagram normalizer or navigation fingerprint stop matching fail the build instead of silently weakening the profile.
 
 ## Scheduled publishing
