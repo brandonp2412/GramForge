@@ -1,0 +1,27 @@
+GramForge
+Copyright (c) 2026 GramForge contributors.
+
+The GramForge source code in this repository is licensed under GNU GPL v3
+(GPL-3.0-only). See LICENSE. GramForge is an independent project.
+
+Third-party tools and inputs used by GramForge retain their own licences:
+- Morphe Desktop and Morphe patch bundles: GNU GPL v3.
+  https://github.com/MorpheApp/morphe-desktop
+  https://github.com/brosssh/morphe-patches
+- FeurStagram patch/base project: GNU GPL v3.
+  https://github.com/jean-voila/FeurStagram
+- Apktool and APKEditor: Apache License 2.0.
+  https://github.com/iBotPeaches/Apktool
+  https://github.com/REAndroid/APKEditor
+- apkeep: MIT License.
+  https://github.com/EFForg/apkeep
+
+Mention of the Morphe name is solely to identify interoperability.
+This project is not affiliated with Morphe or the other upstream projects.
+The Morphe upstream NOTICE has separate attribution and trademark terms
+which apply when redistributing the covered upstream software.
+
+Downloaded patchers, third-party patch bundles, source APKs, and patched
+application APKs are not relicensed by GramForge's repository licence.
+The relevant upstream licences, notices, and any proprietary app rights
+must be respected separately when redistributing those artifacts.
