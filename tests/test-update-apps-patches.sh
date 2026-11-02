@@ -13,7 +13,9 @@ mkdir -p "$tmp_dir/assets"
 cp -r "$repo_dir/assets/rotta-launcher" "$tmp_dir/assets/rotta-launcher"
 cp "$repo_dir/tools/patch-launcher-icon.py" "$tmp_dir/tools/patch-launcher-icon.py"
 cp "$repo_dir/tools/patch-reels-actions.py" "$tmp_dir/tools/patch-reels-actions.py"
-reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" | cut -c1-16)"
+cp "$repo_dir/tools/patch-reels-not-interested.py" "$tmp_dir/tools/patch-reels-not-interested.py"
+cp "$repo_dir/tools/patch-notification-nudges.py" "$tmp_dir/tools/patch-notification-nudges.py"
+reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" "$repo_dir/tools/patch-reels-not-interested.py" "$repo_dir/tools/patch-notification-nudges.py" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
 icon_hash="$(python3 "$repo_dir/tools/patch-launcher-icon.py" --fingerprint "$repo_dir/assets/rotta-launcher")"
 chmod +x "$tmp_dir/update-apps.sh" "$tmp_dir/tools/ensure-apktool.sh"
 touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/patches/instagram.mpp" "$tmp_dir/test.keystore" "$tmp_dir/fake-apktool.jar"
@@ -90,7 +92,7 @@ exit 0
 EOF
 chmod +x "$tmp_dir/bin/java"
 
-PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOTIFICATION_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 
 patch_args="$(<"$tmp_dir/patch-args")"
 grep -Eq 'fake-apktool\.jar d .* -p apk/\.gramforge-446\.0\.0\.49\.77\.[^ ]+/framework ' "$tmp_dir/apktool-args"
@@ -111,6 +113,6 @@ grep -Fqx "INSTAGRAM_PATCH_PROFILE=feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-tr
 test -f "$tmp_dir/.tools/feurstagram/gramforge-v446-0-0-49-77-profile-v5-home-true-rotta-$icon_hash-reels-$reels_hash.apk"
 
 rm -f "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk" "$tmp_dir/patch-args"
-PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOTIFICATION_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 test -f "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk"
 test -f "$tmp_dir/patch-args"

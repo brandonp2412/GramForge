@@ -82,7 +82,7 @@ verify_patch_report() {
 patch_instagram() {
   local feur_tag feur_asset feur_base version package_name
   local patches_version cli_version icon_fingerprint reels_patch_fingerprint patch_profile legacy_profile_prefix legacy_profile_suffix legacy_body legacy_cli_version output previous previous_profile
-  local apktool profile_patcher reels_patcher icon_patcher normalizer tmp_dir framework_dir decoded rebuilt normalized normalized_cache report
+  local apktool profile_patcher reels_patcher not_interested_patcher notification_patcher icon_patcher normalizer tmp_dir framework_dir decoded rebuilt normalized normalized_cache report
 
   feur_tag="$(update_state_get FEUR_TAG)"
   feur_asset="$(update_state_get FEUR_ASSET)"
@@ -99,7 +99,7 @@ patch_instagram() {
   [[ -n "$version" ]] || die "Could not read Instagram version from $feur_base."
 
   icon_fingerprint="$(python3 tools/patch-launcher-icon.py --fingerprint assets/rotta-launcher)"
-  reels_patch_fingerprint="$(sha256sum tools/patch-reels-actions.py | cut -c1-16)"
+  reels_patch_fingerprint="$(sha256sum tools/patch-reels-actions.py tools/patch-reels-not-interested.py tools/patch-notification-nudges.py | cut -d' ' -f1 | sha256sum | cut -c1-16)"
   patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v5-rotta-$icon_fingerprint-reels-$reels_patch_fingerprint"
   legacy_profile_prefix="feur-$feur_tag-brosssh-${patches_version:-unknown}-"
   legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v5-rotta-$icon_fingerprint-reels-$reels_patch_fingerprint"
@@ -141,10 +141,14 @@ patch_instagram() {
     apktool="$(./tools/ensure-apktool.sh)"
     profile_patcher="${GRAMFORGE_PROFILE_PATCHER:-tools/patch-feurstagram-profile.py}"
     reels_patcher="${GRAMFORGE_REELS_PATCHER:-tools/patch-reels-actions.py}"
+    not_interested_patcher="${GRAMFORGE_NOT_INTERESTED_PATCHER:-tools/patch-reels-not-interested.py}"
+    notification_patcher="${GRAMFORGE_NOTIFICATION_PATCHER:-tools/patch-notification-nudges.py}"
     icon_patcher="${GRAMFORGE_ICON_PATCHER:-tools/patch-launcher-icon.py}"
     normalizer="${GRAMFORGE_APK_NORMALIZER:-tools/normalize-apk.py}"
     [[ -f "$profile_patcher" ]] || { rm -rf "$tmp_dir"; die "Profile patcher not found: $profile_patcher"; }
     [[ -f "$reels_patcher" ]] || { rm -rf "$tmp_dir"; die "Reels action patcher not found: $reels_patcher"; }
+    [[ -f "$not_interested_patcher" ]] || { rm -rf "$tmp_dir"; die "Reels Not interested patcher not found: $not_interested_patcher"; }
+    [[ -f "$notification_patcher" ]] || { rm -rf "$tmp_dir"; die "Notification nudge patcher not found: $notification_patcher"; }
     [[ -f "$icon_patcher" ]] || { rm -rf "$tmp_dir"; die "Launcher icon patcher not found: $icon_patcher"; }
     [[ -f "$normalizer" ]] || { rm -rf "$tmp_dir"; die "APK normalizer not found: $normalizer"; }
 
@@ -164,6 +168,14 @@ patch_instagram() {
     if ! python3 "$reels_patcher" "$decoded"; then
       rm -rf "$tmp_dir"
       die "Instagram Reels changed; refusing to build without verified Save/Repost removal."
+    fi
+    if ! python3 "$not_interested_patcher" "$decoded"; then
+      rm -rf "$tmp_dir"
+      die "Instagram Reels changed; refusing to build without confirmed Not interested."
+    fi
+    if ! python3 "$notification_patcher" "$decoded"; then
+      rm -rf "$tmp_dir"
+      die "Notification prompt internals changed; refusing to build without nudge suppression."
     fi
     if ! python3 "$icon_patcher" "$decoded" assets/rotta-launcher; then
       rm -rf "$tmp_dir"

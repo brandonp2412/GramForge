@@ -11,6 +11,8 @@ The default profile:
 - removes ads;
 - removes the Home navigation tab;
 - removes the Save and Repost buttons from the Reels action rail (without changing post-feed actions);
+- replaces organic Reels’ More button with a confirmed **Not interested** action;
+- suppresses notification-permission upsells in the feed, Direct, activity feed, onboarding and named Quick Promotions;
 - leaves Reels, Direct, Search, Profile, and Create visible;
 - signs the patched APK with a private keystore kept outside the repository;
 - can optionally publish new builds and send Matrix notifications.
@@ -51,6 +53,8 @@ Navigation choices are also configurable with `HIDE_HOME`, `HIDE_REELS`, `HIDE_D
 GramForge keeps Morphe Desktop, the Morphe navigation patch bundle, and the FeurStagram base current. It downloads a pinned, SHA-256-verified Apktool release on demand, rewrites FeurStagram's runtime defaults so ads remain blocked while feed, Reels, Explore, stories, suggestions, and navigation stay otherwise stock, rebuilds the APK, normalizes its ZIP metadata, then force-applies the narrow Morphe navigation patch to the newer Instagram base. The Morphe result report must prove the navigation patch succeeded before build state is advanced.
 
 GramForge owns a strict Reels action patch (`tools/patch-reels-actions.py`) that removes the Save and Repost buttons **and their companion count rows** before the APK is rebuilt. It identifies the relevant Reels factories by stable render markers, verifies the list builder skips null children, and fails the build if Instagram changes those assumptions. Its source fingerprint is part of the build profile, so edits force a new APK.
+
+A second strict patch (`tools/patch-reels-not-interested.py`) reuses Instagram’s native Not interested icon but invokes the original organic More-menu Not interested action after a confirm/cancel dialog; sponsored Reels retain their native More menu. `tools/patch-notification-nudges.py` suppresses known notification-permission upsell renderers and eligibility gates without modifying Android permissions or Instagram’s notification settings. All three patch sources contribute to the build fingerprint, and a mismatched Instagram version fails closed.
 
 The patched launcher icon uses the teal Rigby artwork from Rotta, including its approved smaller foreground, at every legacy and adaptive density. GramForge replaces the original Instagram launcher resources during Apktool rebuilding, removes the old monochrome glyph, and fingerprints the icon assets so changes force a fresh build.
 
