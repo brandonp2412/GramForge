@@ -64,6 +64,22 @@ The final signed APK is written under apk/ with its Instagram version in the fil
 
 `cron-update.sh` runs the same build, publishes a changed APK when `APK_PUBLIC_DIR` and `APK_PUBLIC_URL` are configured, and sends a Matrix notification using the configured homeserver, room ID, and access token. Notifications are keyed to a canonical APK payload fingerprint rather than the raw archive hash, so signing metadata, ZIP layout, DEX renumbering, and patcher-only tool upgrades do not get announced as app updates. Matrix messages include a clickable **Download APK** link (with a plain-text fallback). The changelog bullets come only from published FeurStagram and relevant Instagram navigation patch GitHub release notes **between the last successfully announced versions and the new versions**. Each bullet is linked to its original release. No templated feature/configuration bullets are generated. Changes exclusively to FeurStagram UI that GramForge removes (for example, first-run onboarding and in-app updates) are excluded. If no applicable published bullet exists, the message explicitly says so. If GitHub cannot verify a complete release range, the notification fails and is retried rather than silently sending an invented or incomplete changelog. Failure reports use escaped HTML log formatting. Last-announced upstream tags are tracked separately from built versions so failed sends keep the same release-note range when retried.
 
+### Optional private ADB delivery
+
+To install a newly patched build directly on one connected Android device,
+set `GRAMFORGE_ADB_SERIAL` and `GRAMFORGE_ADB_EXPECTED_MODEL` in the
+**machine-local** `~/.config/gramforge/config.env` (or legacy `publish.env`).
+The cron uses `adb install -r` to replace the existing app **without clearing
+its data**; it validates the exact device model and never selects a fallback
+device. A separate checkpoint tracks successful installation by signed APK
+SHA-256. Disconnected devices, mismatched models, or failed installations
+leave that checkpoint unchanged, so the next scheduled run retries.
+
+Set `GRAMFORGE_ADB_ONLY=true` to disable APK publishing and successful-build
+Matrix messages while retaining optional Matrix failure alerts. The public
+repository intentionally contains no real device serials, IP addresses, host
+paths, signing material, or personal identifiers.
+
 The Matrix notifier may be a shared account. Match its sender name and avatar to the GramForge room using its **room-specific member profile**, not its global account profile, to avoid changing the identity used in other notification rooms.
 
 No deployment hostname, room ID, access token, signing key, or local machine path is stored in the repository.

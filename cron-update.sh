@@ -9,6 +9,23 @@ export JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$JAVA_TMP_DIR${JAVA_TOOL_OPTIONS:+ $J
 # shellcheck source=lib/config.sh
 source lib/config.sh
 
+# Device configuration belongs to the host, never to this public repository.
+adb_serial="${GRAMFORGE_ADB_SERIAL:-}"
+adb_expected_model="${GRAMFORGE_ADB_EXPECTED_MODEL:-}"
+adb_only="${GRAMFORGE_ADB_ONLY:-false}"
+if [[ "$adb_only" != true && "$adb_only" != false ]]; then
+  printf 'GRAMFORGE_ADB_ONLY must be true or false.\n' >&2
+  exit 1
+fi
+if [[ "$adb_only" == true && -z "$adb_serial" ]]; then
+  printf 'GRAMFORGE_ADB_SERIAL is required for ADB-only delivery.\n' >&2
+  exit 1
+fi
+if [[ -n "$adb_serial" && -z "$adb_expected_model" ]]; then
+  printf 'GRAMFORGE_ADB_EXPECTED_MODEL is required for safe ADB installation.\n' >&2
+  exit 1
+fi
+
 matrix_enabled=false
 if [[ -n "${MATRIX_HOMESERVER:-}${MATRIX_ROOM_ID:-}${MATRIX_ACCESS_TOKEN:-}" ]]; then
   : "${MATRIX_HOMESERVER:?MATRIX_HOMESERVER is required when Matrix notifications are enabled}"
@@ -19,7 +36,7 @@ if [[ -n "${MATRIX_HOMESERVER:-}${MATRIX_ROOM_ID:-}${MATRIX_ACCESS_TOKEN:-}" ]];
 fi
 
 publish_enabled=false
-if [[ -n "${APK_PUBLIC_DIR:-}${APK_PUBLIC_URL:-}" ]]; then
+if [[ "$adb_only" != true && -n "${APK_PUBLIC_DIR:-}${APK_PUBLIC_URL:-}" ]]; then
   : "${APK_PUBLIC_DIR:?APK_PUBLIC_DIR is required when publishing is enabled}"
   : "${APK_PUBLIC_URL:?APK_PUBLIC_URL is required when publishing is enabled}"
   publish_enabled=true
@@ -106,6 +123,15 @@ LOG_FILE=".cron-update.log"
 FAILURE_STATE=".cron-failure-state"
 NOTIFY_STATE=".cron-notify-state"
 NOTIFY_METADATA=".cron-notify-metadata"
+ADB_INSTALL_STATE=".cron-adb-install-state"
+
+fail_adb_install() {
+  local message="$1"
+  printf '%s\n' "$message" >>"$LOG_FILE"
+  printf '%s\n' "$message" >&2
+  handle_update_failure
+  exit 1
+}
 before_version="$(awk -F= '$1 == "INSTAGRAM_VERSION" { print $2 }' .patched-app-state 2>/dev/null || true)"
 before_profile="$(awk -F= '$1 == "INSTAGRAM_PATCH_PROFILE" { print $2 }' .patched-app-state 2>/dev/null || true)"
 before_release_tag="$(awk -F= '$1 == "FEUR_TAG" { print $2 }' .update-state 2>/dev/null || true)"
@@ -149,7 +175,34 @@ after_payload="$(apk_payload_fingerprint "$apk")"
 after="payload-v1:$after_payload"
 notified="$(cat "$NOTIFY_STATE" 2>/dev/null || true)"
 
-if [[ "$after" != "$notified" ]]; then
+# Installation has its own checkpoint, independent of publication/Matrix. If
+# ADB is offline or the install fails, the next timer run retries the same APK.
+# Use the full signed file hash: successful install means these exact bytes.
+if [[ -n "$adb_serial" ]]; then
+  installed_hash="$(cat "$ADB_INSTALL_STATE" 2>/dev/null || true)"
+  current_hash="sha256:$(sha256sum "$apk" | awk '{print $1}')"
+  if [[ "$current_hash" != "$installed_hash" ]]; then
+    command -v adb >/dev/null 2>&1 || fail_adb_install 'ADB install failed: adb is unavailable.'
+    command -v timeout >/dev/null 2>&1 || fail_adb_install 'ADB install failed: timeout is unavailable.'
+    if ! timeout 10s adb -s "$adb_serial" get-state >/dev/null 2>&1; then
+      # Reconnect TCP debugging on later runs if the phone went offline.
+      if [[ "$adb_serial" == *:* ]]; then
+        timeout 15s adb connect "$adb_serial" >/dev/null 2>&1 || true
+      fi
+    fi
+    model="$(timeout 15s adb -s "$adb_serial" shell getprop ro.product.model 2>/dev/null | tr -d '\r' || true)"
+    [[ "$model" == "$adb_expected_model" ]] || fail_adb_install 'ADB install failed: configured target is offline or its model does not match.'
+    timeout 240s adb -s "$adb_serial" install -r "$apk" >/dev/null 2>&1 ||
+      fail_adb_install 'ADB install failed: check connection, storage, or signing certificate.'
+    install_state_tmp="$(mktemp "${ADB_INSTALL_STATE}.XXXXXX")"
+    printf '%s\n' "$current_hash" >"$install_state_tmp"
+    mv -f "$install_state_tmp" "$ADB_INSTALL_STATE"
+  fi
+fi
+
+# ADB-only delivery deliberately does not publish or mark an APK as announced.
+# Matrix remains available to alert on installation failures.
+if [[ "$after" != "$notified" && "$adb_only" != true ]]; then
   download_url=""
   if [[ "$publish_enabled" == true ]]; then
     build_hash="$(sha256sum "$apk" | awk '{print substr($1, 1, 12)}')"
