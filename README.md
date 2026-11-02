@@ -1,85 +1,29 @@
-<p align="center">
-  <img src="assets/gramforge-banner.svg" alt="GramForge — Forge the Instagram you actually want." width="100%">
-</p>
-
 # GramForge
 
-Reproducible command-line Instagram customization built on Morphe.
+Builds signed, customized Instagram APKs from FeurStagram using Morphe.
 
-The default profile:
+- Blocks ads and hides the Home tab.
+- Removes Reels Save/Repost buttons and their counts.
+- Replaces organic Reels’ More button with immediate **Not interested** (sponsored Reels keep More).
+- Suppresses notification prompts and customizes the launcher icon.
 
-- removes ads;
-- removes the Home navigation tab;
-- removes the Save and Repost buttons from the Reels action rail (without changing post-feed actions);
-- replaces organic Reels’ More button with an immediate **Not interested** action;
-- suppresses notification-permission upsells in the feed, Direct, activity feed, onboarding and named Quick Promotions;
-- leaves Reels, Direct, Search, Profile, and Create visible;
-- signs the patched APK with a private keystore kept outside the repository;
-- can optionally publish new builds and send Matrix notifications.
+## Build
 
-## Requirements
-
-- Bash
-- Java compatible with the current Morphe Desktop release
-- `curl`, `jq`, `flock`, `unzip`, `rg` (ripgrep), and standard Unix tools
-- `APKEditor.jar` in the repository root
-
-GramForge tracks the latest stable FeurStagram release as its current open-source ad-filtering base. The standard APK is selected from GitHub Releases, its GitHub-provided SHA-256 digest is verified, and its package/version are checked before patching. GramForge then normalizes FeurStagram to an ads-only runtime profile, disables FeurStagram-specific update/onboarding prompts, and applies the configured navigation changes with Morphe.
-
-Downloaded APKs, patch bundles, CLI jars, signing keys, logs, and runtime state are intentionally ignored by Git.
-
-## Configuration
-
-Copy the example configuration and edit it locally:
+Requires Bash, Java, `curl`, `jq`, `flock`, `unzip`, `rg`, and `APKEditor.jar` in the repository root.
 
 ```bash
 mkdir -p ~/.config/gramforge
 cp config.example.env ~/.config/gramforge/config.env
 chmod 600 ~/.config/gramforge/config.env
-```
-
-Keep the signing keystore outside the repository and set `GRAMFORGE_KEYSTORE` to its path.
-
-Matrix and APK publishing settings are runtime configuration only. They do not belong in source control.
-
-Navigation choices are also configurable with `HIDE_HOME`, `HIDE_REELS`, `HIDE_DIRECT`, `HIDE_SEARCH`, `HIDE_PROFILE`, and `HIDE_CREATE`.
-
-## Build
-
-```bash
 ./update-apps.sh
 ```
 
-GramForge keeps Morphe Desktop, the Morphe navigation patch bundle, and the FeurStagram base current. It downloads a pinned, SHA-256-verified Apktool release on demand, rewrites FeurStagram's runtime defaults so ads remain blocked while feed, Reels, Explore, stories, suggestions, and navigation stay otherwise stock, rebuilds the APK, normalizes its ZIP metadata, then force-applies the narrow Morphe navigation patch to the newer Instagram base. The Morphe result report must prove the navigation patch succeeded before build state is advanced.
+Set `GRAMFORGE_KEYSTORE` to a private keystore outside the repository. Configure navigation with the `HIDE_*` options. Signed APKs are saved in `apk/`. Builds fail if upstream changes invalidate a patch.
 
-GramForge owns a strict Reels action patch (`tools/patch-reels-actions.py`) that removes the Save and Repost buttons **and their companion count rows** before the APK is rebuilt. It identifies the relevant Reels factories by stable render markers, verifies the list builder skips null children, and fails the build if Instagram changes those assumptions. Its source fingerprint is part of the build profile, so edits force a new APK.
+## Automatic updates
 
-A second strict patch (`tools/patch-reels-not-interested.py`) reuses Instagram’s native Not interested icon but invokes the original organic More-menu Not interested action immediately, without a confirmation dialog or follow-up sheet; sponsored Reels retain their native More menu. `tools/patch-notification-nudges.py` suppresses known notification-permission upsell renderers and eligibility gates without modifying Android permissions or Instagram’s notification settings. All three patch sources contribute to the build fingerprint, and a mismatched Instagram version fails closed.
+`./cron-update.sh` can publish changed APKs (`APK_PUBLIC_DIR`, `APK_PUBLIC_URL`) and send Matrix notifications with source-linked changelogs (`MATRIX_*`).
 
-The patched launcher icon uses the teal Rigby artwork from Rotta, including its approved smaller foreground, at every legacy and adaptive density. GramForge replaces the original Instagram launcher resources during Apktool rebuilding, removes the old monochrome glyph, and fingerprints the icon assets so changes force a fresh build.
+For private ADB delivery, set `GRAMFORGE_ADB_SERIAL`, `GRAMFORGE_ADB_EXPECTED_MODEL`, and `GRAMFORGE_ADB_ONLY=true`. Installs preserve app data and retry if the device is unavailable.
 
-The final signed APK is written under apk/ with its Instagram version in the filename. Upstream changes that make the FeurStagram normalizer or navigation fingerprint stop matching fail the build instead of silently weakening the profile.
-
-## Scheduled publishing
-
-`cron-update.sh` runs the same build, publishes a changed APK when `APK_PUBLIC_DIR` and `APK_PUBLIC_URL` are configured, and sends a Matrix notification using the configured homeserver, room ID, and access token. Notifications are keyed to a canonical APK payload fingerprint rather than the raw archive hash, so signing metadata, ZIP layout, DEX renumbering, and patcher-only tool upgrades do not get announced as app updates. Matrix messages include a clickable **Download APK** link (with a plain-text fallback). The changelog bullets come only from published FeurStagram and relevant Instagram navigation patch GitHub release notes **between the last successfully announced versions and the new versions**. Each bullet is linked to its original release. No templated feature/configuration bullets are generated. Changes exclusively to FeurStagram UI that GramForge removes (for example, first-run onboarding and in-app updates) are excluded. If no applicable published bullet exists, the message explicitly says so. If GitHub cannot verify a complete release range, the notification fails and is retried rather than silently sending an invented or incomplete changelog. Failure reports use escaped HTML log formatting. Last-announced upstream tags are tracked separately from built versions so failed sends keep the same release-note range when retried.
-
-### Optional private ADB delivery
-
-To install a newly patched build directly on one connected Android device,
-set `GRAMFORGE_ADB_SERIAL` and `GRAMFORGE_ADB_EXPECTED_MODEL` in the
-**machine-local** `~/.config/gramforge/config.env` (or legacy `publish.env`).
-The cron uses `adb install -r` to replace the existing app **without clearing
-its data**; it validates the exact device model and never selects a fallback
-device. A separate checkpoint tracks successful installation by signed APK
-SHA-256. Disconnected devices, mismatched models, or failed installations
-leave that checkpoint unchanged, so the next scheduled run retries.
-
-Set `GRAMFORGE_ADB_ONLY=true` to disable APK publishing and successful-build
-Matrix messages while retaining optional Matrix failure alerts. The public
-repository intentionally contains no real device serials, IP addresses, host
-paths, signing material, or personal identifiers.
-
-The Matrix notifier may be a shared account. Match its sender name and avatar to the GramForge room using its **room-specific member profile**, not its global account profile, to avoid changing the identity used in other notification rooms.
-
-No deployment hostname, room ID, access token, signing key, or local machine path is stored in the repository.
+Keep keys, tokens, device identifiers, and host-specific settings in the local configuration—never in Git.
