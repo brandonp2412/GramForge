@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Replace the organic Reels More button with confirmed Not interested.
+"""Replace the organic Reels More button with immediate Not interested.
 
 Reuses Instagram's own ClipsNotInterestedButtonComponent for the icon and
-Instagram's *organic More > Not interested* handler for the action. The
-confirmation is the only new UI; cancellation never invokes the action.
+Instagram's *organic More > Not interested* handler for the action. Tapping
+the button acts immediately, with no custom confirmation or reasons sheet.
 Sponsored media keep their native More menu.
 """
 from __future__ import annotations
@@ -112,14 +112,14 @@ ORIGINAL_MORE_ACTION = """.method public final gramForgeSelectNotInterested(LX/0
     return-void
 .end method"""
 
-CONFIRM_WRAPPER = """.method public static A04(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+DIRECT_WRAPPER = """.method public static A04(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     .locals 1
-    invoke-static {p0, p1}, Lcom/gramforge/patches/ReelsNotInterested;->show(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    invoke-static {p0, p1}, LX/0D9G;->gramForgePerformOverflowNotInterested(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     move-result-object v0
     return-object v0
 .end method"""
 
-CONFIRMED_MORE_ACTION = """.method public static gramForgePerformOverflowNotInterested(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+DISPATCH_MORE_ACTION = """.method public static gramForgePerformOverflowNotInterested(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     .locals 3
     move-object v0, p0
     check-cast v0, LX/0D9G;
@@ -136,59 +136,6 @@ CONFIRMED_MORE_ACTION = """.method public static gramForgePerformOverflowNotInte
     sget-object v0, LX/00F8;->A00:LX/00F8;
     return-object v0
 .end method"""
-
-SHOW_HELPER = """.class public final Lcom/gramforge/patches/ReelsNotInterested;
-.super Ljava/lang/Object;
-
-.method public static show(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
-    .locals 4
-    move-object v0, p1
-    check-cast v0, LX/008Y;
-    invoke-virtual {v0}, LX/008Y;->A00()Landroid/view/View;
-    move-result-object v0
-    invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
-    move-result-object v0
-    new-instance v1, Landroid/app/AlertDialog$Builder;
-    invoke-direct {v1, v0}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;)V
-    const-string v2, "Not interested?"
-    invoke-virtual {v1, v2}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
-    const-string v2, "Show fewer Reels like this?"
-    invoke-virtual {v1, v2}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
-    new-instance v2, Lcom/gramforge/patches/ConfirmNotInterested;
-    invoke-direct {v2, p0, p1}, Lcom/gramforge/patches/ConfirmNotInterested;-><init>(Ljava/lang/Object;Ljava/lang/Object;)V
-    const-string v3, "Not interested"
-    invoke-virtual {v1, v3, v2}, Landroid/app/AlertDialog$Builder;->setPositiveButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
-    const-string v2, "Cancel"
-    const/4 v3, 0x0
-    invoke-virtual {v1, v2, v3}, Landroid/app/AlertDialog$Builder;->setNegativeButton(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
-    invoke-virtual {v1}, Landroid/app/AlertDialog$Builder;->show()Landroid/app/AlertDialog;
-    sget-object v0, LX/00F8;->A00:LX/00F8;
-    return-object v0
-.end method"""
-
-CLICK_HELPER = """.class public final Lcom/gramforge/patches/ConfirmNotInterested;
-.super Ljava/lang/Object;
-.implements Landroid/content/DialogInterface$OnClickListener;
-
-.field private final action:Ljava/lang/Object;
-.field private final event:Ljava/lang/Object;
-
-.method public constructor <init>(Ljava/lang/Object;Ljava/lang/Object;)V
-    .locals 0
-    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
-    iput-object p1, p0, Lcom/gramforge/patches/ConfirmNotInterested;->action:Ljava/lang/Object;
-    iput-object p2, p0, Lcom/gramforge/patches/ConfirmNotInterested;->event:Ljava/lang/Object;
-    return-void
-.end method
-
-.method public onClick(Landroid/content/DialogInterface;I)V
-    .locals 2
-    iget-object v0, p0, Lcom/gramforge/patches/ConfirmNotInterested;->action:Ljava/lang/Object;
-    iget-object v1, p0, Lcom/gramforge/patches/ConfirmNotInterested;->event:Ljava/lang/Object;
-    invoke-static {v0, v1}, LX/0D9G;->gramForgePerformOverflowNotInterested(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
-    return-void
-.end method"""
-
 
 def patch(root: Path, *, check: bool = False) -> list[str]:
     reels_path = only_path(root, "09LB")
@@ -248,23 +195,17 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
     updated_reels = updated_reels.replace(f"{REELS_OWNER}->{REELS_METHOD}", f"{REELS_OWNER}->{REELS_NEW_METHOD}")
     updated_reels += "\n" + ORGANIC_FACTORY + "\n" + ORIGINAL_MORE_ACTION + "\n"
     original_perform = native.replace(" A04(", " gramForgePerformNotInterested(", 1)
-    updated_action = action.replace(native, CONFIRM_WRAPPER + "\n\n" + original_perform + "\n\n" + CONFIRMED_MORE_ACTION, 1)
+    updated_action = action.replace(native, DIRECT_WRAPPER + "\n\n" + original_perform + "\n\n" + DISPATCH_MORE_ACTION, 1)
     updated_native_button = native_button.replace(
         ".super LX/009q;", ".super LX/009q;\n\n.field public gramForgeOwner:LX/09LB;", 1
     )
     if updated_native_button == native_button:
         raise PatchMismatch("native Not interested component superclass changed")
-    helper_dir = root / "smali_classes8" / "com" / "gramforge" / "patches"
-    if (helper_dir / "ReelsNotInterested.smali").exists():
-        raise PatchMismatch("GramForge dialog helper already present")
     if not check:
         reels_path.write_text(updated_reels)
         action_path.write_text(updated_action)
         native_button_path.write_text(updated_native_button)
-        helper_dir.mkdir(parents=True, exist_ok=True)
-        (helper_dir / "ReelsNotInterested.smali").write_text(SHOW_HELPER + "\n")
-        (helper_dir / "ConfirmNotInterested.smali").write_text(CLICK_HELPER + "\n")
-    return ["organic Reels action", "confirmation dialog", "original More-menu Not interested callback"]
+    return ["organic Reels action", "immediate More-menu Not interested callback"]
 
 
 if __name__ == "__main__":

@@ -155,7 +155,7 @@ class ReelsNotInterestedPatchTest(unittest.TestCase):
         NOT_INTERESTED["patch"](self.root, check=True)
         self.assertEqual(self.more.read_bytes(), original)
 
-    def test_native_button_and_confirmation(self) -> None:
+    def test_native_button_dispatches_overflow_action_immediately(self) -> None:
         NOT_INTERESTED["patch"](self.root)
         source = self.more.read_text()
         self.assertIn("->gramForgeNotInterested(JJ)LX/05x0;", source)
@@ -163,16 +163,20 @@ class ReelsNotInterestedPatchTest(unittest.TestCase):
         self.assertIn("LX/0SgP;-><init>", source)
         self.assertIn("if-nez v0, :gramforge_original_more", source)
         self.assertIn("const/4 v0, 0x0\n    invoke-virtual {v5, v0}", source)
-        self.assertIn("gramForgePerformNotInterested", self.action.read_text())
         self.assertIn("gramForgeSelectNotInterested", source)
         self.assertIn("LX/04RW;->A0b(Lcom/instagram/feed/media/mediaoption/MediaOption$Option;)V", source)
         self.assertIn(".field public gramForgeOwner:LX/09LB;", self.native.read_text())
-        helper = self.root / "smali_classes8/com/gramforge/patches/ReelsNotInterested.smali"
-        listener = self.root / "smali_classes8/com/gramforge/patches/ConfirmNotInterested.smali"
-        self.assertIn('const-string v2, "Cancel"', helper.read_text())
-        self.assertIn('const-string v3, "Not interested"', helper.read_text())
-        self.assertIn("->gramForgePerformOverflowNotInterested", listener.read_text())
-        self.assertNotIn("->gramForgePerformNotInterested", listener.read_text())
+        action = self.action.read_text()
+        callback = NOT_INTERESTED["only_method"](
+            action, "A04(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
+        )
+        self.assertIn("->gramForgePerformOverflowNotInterested", callback)
+        self.assertNotIn("AlertDialog", action)
+        self.assertNotIn("ConfirmNotInterested", action)
+        self.assertNotIn("ReelsNotInterested;->show", action)
+        self.assertIn("->gramForgeSelectNotInterested", action)
+        self.assertIn("->gramForgePerformNotInterested", action)
+        self.assertFalse((self.root / "smali_classes8/com/gramforge").exists())
 
     def test_fails_closed_on_missing_native_action(self) -> None:
         self.action.write_text(self.action.read_text().replace(
