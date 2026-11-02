@@ -6,6 +6,7 @@ Builds signed, customized Instagram APKs from FeurStagram using Morphe.
 - Removes Reels Save/Repost buttons and their counts.
 - Replaces organic Reels’ More button with immediate **Not interested** (sponsored Reels keep More).
 - Suppresses notification prompts and customizes the launcher icon.
+- Hides comments containing "your page" (case-insensitive), including replies.
 
 ## Build
 
