@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Remove only the Save and Repost entries from Instagram's Reels action rail.
+"""Remove Reels Save/Repost buttons and their companion count rows.
 
-The obfuscated class/method names move between Instagram versions, so identify
-the two component factories by their stable render/profiling strings. Refuse to
-modify an APK unless both factories feed a null-skipping Litho list builder.
+The obfuscated names move between Instagram versions, so identify the four
+Reels-only factories by render markers and their action-rail call sites. Refuse
+to modify an APK unless every factory feeds a null-skipping Litho list builder.
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ MARKERS = {
     "save": "ClipsSaveButtonComponent_render",
     "repost": "ClipsAnimatedRepostButtonComponent_render",
     "repost_child": "ClipsRepostButtonComponent_render",
+    "save_count": "ClipsUfiComponent_maybeCreateSaveCountComponent",
 }
 
 METHOD_RE = re.compile(r"(?ms)^\.method [^\n]+\n.*?^\.end method\s*$")
@@ -76,6 +77,62 @@ def factory(source: str, component: str, marker: str | None) -> tuple[str, str, 
         )
     block, name, signature = candidates[0]
     return block.group(), name, signature
+
+
+def factory_by_marker(
+    source: str, marker: str, result_type: str
+) -> tuple[str, str, str]:
+    candidates = []
+    for match in METHOD_RE.finditer(source):
+        block = match.group()
+        header = block.splitlines()[0]
+        if marker not in block or not header.endswith(f"){result_type}"):
+            continue
+        signature = re.search(r"([^\s(]+)(\([^)]*\)L[^;]+;)$", header)
+        if signature:
+            candidates.append((block, signature.group(1), signature.group(2)))
+    if len(candidates) != 1:
+        raise PatchMismatch(f"expected one factory containing {marker}, found {len(candidates)}")
+    return candidates[0]
+
+
+def repost_count_factory(
+    source: str, owner: str, repost_name: str, repost_signature: str
+) -> tuple[str, str, str]:
+    # The numeric Repost label is a separate Litho child appended directly
+    # after the Repost button in the Reels action rail on eligible media.
+    invocation = re.escape(f"{owner}->{repost_name}{repost_signature}")
+    matches = re.finditer(
+        r"invoke-direct(?:/range)? \{[^\n]+\}, " + invocation
+        + r"\s+move-result-object v\d+"
+        + r"\s+invoke-virtual \{v\d+, v\d+\}, L[^;]+;->[^\s(]+\(LX/05x0;\)V",
+        source,
+    )
+    candidates = set()
+    for match in matches:
+        following = source[match.end():match.end() + 650]
+        candidate = re.search(
+            r"invoke-direct(?:/range)? \{[^\n]+\}, "
+            + re.escape(owner)
+            + r"->(?P<name>[^\s(]+)(?P<signature>\([^)]*\)LX/00Ax;)",
+            following,
+        )
+        if candidate:
+            candidates.add((candidate["name"], candidate["signature"]))
+
+    verified = []
+    for name, signature in candidates:
+        blocks = [
+            match.group() for match in METHOD_RE.finditer(source)
+            if match.group().splitlines()[0].endswith(f"{name}{signature}")
+        ]
+        if len(blocks) == 1 and "->DMp()" in blocks[0] and '"ufi_count"' in blocks[0]:
+            verified.append((blocks[0], name, signature))
+    if len(verified) != 1:
+        raise PatchMismatch(
+            f"expected one companion Repost count factory, found {len(verified)}"
+        )
+    return verified[0]
 
 
 def verified_append_calls(
@@ -134,14 +191,23 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
     if f"new-instance " not in repost_source or marked["repost_child"][2] not in repost_source:
         raise PatchMismatch(f"{repost_path}: animated Reels Repost child no longer present")
 
+    save_button = factory(ufi_source, marked["save"][2], MARKERS["ufi"])
+    repost_button = factory(ufi_source, repost_component, None)
+    save_count = factory_by_marker(
+        ufi_source, MARKERS["save_count"], "LX/00Ax;"
+    )
+    repost_count = repost_count_factory(
+        ufi_source, ufi_owner, repost_button[1], repost_button[2]
+    )
     targets = [
-        ("Save", marked["save"][2], MARKERS["ufi"]),
-        ("Repost", repost_component, None),
+        ("Save", *save_button),
+        ("Repost", *repost_button),
+        ("Save count", *save_count),
+        ("Repost count", *repost_count),
     ]
     replacements: list[tuple[str, str, str]] = []
     builders: set[tuple[str, str]] = set()
-    for label, component, marker in targets:
-        old, name, signature = factory(ufi_source, component, marker)
+    for label, old, name, signature in targets:
         builders.add(verified_append_calls(ufi_source, ufi_owner, name, signature))
         header = old.splitlines()[0]
         replacement = (
@@ -151,7 +217,7 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
         )
         replacements.append((label, old, replacement))
     if len(builders) != 1:
-        raise PatchMismatch("Save and Repost are no longer in the same Reels action builder")
+        raise PatchMismatch("Reels buttons and count rows no longer share one action builder")
     verify_null_skipping_builder(root, *next(iter(builders)))
     if not check:
         updated = ufi_source
