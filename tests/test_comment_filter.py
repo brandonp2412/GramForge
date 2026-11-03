@@ -49,40 +49,80 @@ class CommentFilterTest(unittest.TestCase):
 
     def test_only_checks_without_mutation(self) -> None:
         before = self.row.read_bytes()
-        self.assertEqual(len(PATCH["patch"](self.root, check=True)), 1)
+        self.assertEqual(len(PATCH["patch"](self.root, check=True)), 3)
         self.assertEqual(self.row.read_bytes(), before)
+        self.assertFalse((self.root / "smali_classes28/com/gramforge/CommentFilter.smali").exists())
 
     def test_hides_entire_row_before_compose_renders(self) -> None:
         PATCH["patch"](self.root)
         result = self.row.read_text()
-        self.assertIn('LX/0Il1;->A0O:Ljava/lang/String;', result)
-        self.assertIn('Ljava/util/Locale;->ROOT:Ljava/util/Locale;', result)
-        self.assertIn('Ljava/lang/String;->toLowerCase(Ljava/util/Locale;)Ljava/lang/String;', result)
-        self.assertIn('const-string v1, "your page"', result)
-        self.assertIn('Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z', result)
-        self.assertLess(result.index('return-void\n\n    :gramforge_comment_visible'), result.index('->Hg2(I)V'))
-        self.assertIn('if-eqz v0, :gramforge_comment_visible', result)
+        helper = (self.root / "smali_classes28/com/gramforge/CommentFilter.smali").read_text()
+        self.assertIn("LX/0Il1;->A0O:Ljava/lang/String;", result)
+        self.assertIn("Lcom/gramforge/CommentFilter;->shouldHide(Ljava/lang/String;)Z", result)
+        self.assertLess(
+            result.index("return-void\n\n    :gramforge_comment_visible"),
+            result.index("->Hg2(I)V"),
+        )
+        self.assertIn("if-eqz v0, :gramforge_comment_visible", result)
+        self.assertIn("Ljava/text/Normalizer;->normalize(", helper)
+        self.assertIn("Ljava/util/Locale;->ROOT:Ljava/util/Locale;", helper)
+        self.assertIn("Ljava/lang/String;->toLowerCase(Ljava/util/Locale;)", helper)
+        self.assertIn('const-string v1, "[^\\\\p{L}\\\\p{N}]+"', helper)
+        self.assertEqual(helper.count("Ljava/util/regex/Pattern;->compile"), len(PATCH["PATTERNS"]))
+        self.assertEqual(helper.count("Ljava/util/regex/Matcher;->find"), len(PATCH["PATTERNS"]))
 
-    def test_examples_match_phrase_independent_of_case(self) -> None:
+    def test_formulaic_comments_are_hidden(self) -> None:
         matching = [
             "why do i get a warning when i follow your page?",
             "your page is so funny",
             "your page is so crazy",
             "YOUR PAGE is hilarious",
             "I love your page.",
-        ]
-        not_matching = [
             "your posts are funny",
-            "What page is this?",
-            "You're on my page",
-            "They said your Instagram page is nice",
+            "Your profile picture is hilarious!",
+            "They said your Instagram page is nice", "What page is this?",
+            "You're on my page", "That's so funny", "It's really amazing",
+            "Do you accept crypto?",
+            "DM me the recipe please",
+            "Congratulations on winning!",
+            "wow", "so funny", "Great post!", "love this", "BRO 💀",
+            "The comments never disappoint", "This is so hilarious",
+            "You are so funny", "Anyone else watching in 2026?",
+            "Who else is here?", "Is it just me or...",
+            "What camera do you use?", "lol 😂😂",
+            "🔥🔥🔥", "😂😭❤️", "🙌🏻",
+            "Follow for follow!", "Promote it on @hype",
+            "DM me for collabs", "Free followers",
+            "Check out my profile", "Link in my bio",
+            "OnlyFans in my bio", "Click the link",
+            "Congratulations you won a prize", "Claim your reward",
+            "Recover your funds", "Invest in Bitcoin for guaranteed profits",
+            "DM on WhatsApp for crypto profit",
+            "Your account has been suspended, verify your account",
+            "Copyright violation",
+            "ＹＯＵＲ　ＰＡＧＥ is so fun",
         ]
         for comment in matching:
             with self.subTest(comment=comment):
-                self.assertIn("your page", comment.lower())
-        for comment in not_matching:
+                self.assertTrue(PATCH["should_hide"](comment), comment)
+
+    def test_unusual_specific_comments_stay_visible(self) -> None:
+        kept = [
+            "The pigeon is invoicing the sky.",
+            "I heard the microwave ask for overtime",
+            "A committee of potatoes approved this",
+            "Who gave that possum a forklift licence?",
+            "That blender has better acting range than the entire cast.",
+            "The photographer needs a raise for this shot.",
+            "Why does the blue chair have a traffic ticket?",
+            "I use this camera for slow motion archival footage",
+            "A crab could have filed the paperwork faster",
+            "I would trust that squirrel with my tax return",
+        ]
+        for comment in kept:
             with self.subTest(comment=comment):
-                self.assertNotIn("your page", comment.lower())
+                self.assertFalse(PATCH["should_hide"](comment), comment)
+        self.assertFalse(PATCH["should_hide"](None))
 
     def test_refuses_second_application(self) -> None:
         PATCH["patch"](self.root)
