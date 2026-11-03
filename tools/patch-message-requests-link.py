@@ -28,6 +28,32 @@ REQUEST_ADD = (
     "Ljava/util/AbstractCollection;->add(Ljava/lang/Object;)Z\n"
 )
 LIST_COMMIT = "    new-instance v5, LX/05Ku;"
+PRIMARY_CLASS = ".class public final LX/0RDL;"
+PRIMARY_METHOD_RE = re.compile(
+    r"(?ms)^\.method public final A01\(Lcom/instagram/common/session/UserSession;"
+    r"LX/06Zx;LX/0Jnp;IZZZ\)LX/05Ku;\n.*?^\.end method$"
+)
+PRIMARY_REQUEST_MODE = "    sget-object v6, LX/01tK;->A00:LX/01tK;"
+PRIMARY_CONSTRUCTOR = (
+    "    invoke-direct/range {v21 .. v31}, LX/0X7V;-><init>"
+    "(LX/0RDO;LX/06Zx;Ljava/lang/Integer;Ljava/lang/Integer;"
+    "Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;ZZZ)V"
+)
+PRIMARY_ADD = (
+    "    invoke-virtual {v7, v1}, "
+    "Ljava/util/AbstractCollection;->add(Ljava/lang/Object;)Z"
+)
+PRIMARY_SKIP = """    iget-object v2, v4, Landroid/util/Pair;->second:Ljava/lang/Object;
+
+    sget-object v3, LX/01tK;->A00:LX/01tK;
+
+    invoke-static {v2, v3}, LX/00d6;->areEqual(Ljava/lang/Object;Ljava/lang/Object;)Z
+
+    move-result v2
+
+    if-nez v2, :goto_4
+
+"""
 
 
 def transform(source: str) -> str:
@@ -51,17 +77,45 @@ def transform(source: str) -> str:
     return source[:matches[0].start()] + updated + source[matches[0].end():]
 
 
+def transform_primary(source: str) -> str:
+    """Omit Requests from the live folder list built by A07 -> 0RDL.A01."""
+    if PRIMARY_CLASS not in source:
+        raise PatchMismatch("primary Direct inbox navigation class changed")
+    matches = list(PRIMARY_METHOD_RE.finditer(source))
+    if len(matches) != 1:
+        raise PatchMismatch(f"expected one primary inbox builder, found {len(matches)}")
+    method = matches[0].group()
+    for marker in (PRIMARY_REQUEST_MODE, PRIMARY_CONSTRUCTOR, PRIMARY_ADD):
+        if method.count(marker) != 1:
+            raise PatchMismatch(f"primary Requests fingerprint missing/duplicated: {marker}")
+    mode = method.index(PRIMARY_REQUEST_MODE)
+    constructor = method.index(PRIMARY_CONSTRUCTOR)
+    addition = method.index(PRIMARY_ADD)
+    if not (mode < constructor < addition < method.index("    goto/16 :goto_4", addition)):
+        raise PatchMismatch("primary Requests navigation insertion changed")
+    updated = method.replace(PRIMARY_ADD, PRIMARY_SKIP + PRIMARY_ADD, 1)
+    return source[:matches[0].start()] + updated + source[matches[0].end():]
+
+
 def patch(root: Path, *, check: bool = False) -> Path:
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK missing: {root}")
-    paths = list(root.rglob("05PM.smali"))
-    if len(paths) != 1:
-        raise PatchMismatch(f"expected one Direct inbox navigation class, found {len(paths)}")
-    path = paths[0]
-    updated = transform(path.read_text())
+    legacy_paths = list(root.rglob("05PM.smali"))
+    primary_paths = list(root.rglob("0RDL.smali"))
+    if len(legacy_paths) != 1 or len(primary_paths) != 1:
+        raise PatchMismatch(
+            "expected exactly one of each Direct inbox navigation builder; "
+            f"found {len(legacy_paths)} legacy and {len(primary_paths)} primary"
+        )
+    # Validate both paths before writing either one, so an upstream mismatch
+    # cannot leave the decoded APK half-patched.
+    legacy_path, primary_path = legacy_paths[0], primary_paths[0]
+    legacy_updated = transform(legacy_path.read_text())
+    primary_updated = transform_primary(primary_path.read_text())
     if not check:
-        path.write_text(updated)
-    return path
+        legacy_path.write_text(legacy_updated)
+        primary_path.write_text(primary_updated)
+    return primary_path
 
 
 if __name__ == "__main__":
