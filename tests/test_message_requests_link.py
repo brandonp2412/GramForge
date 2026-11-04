@@ -57,6 +57,21 @@ PRIMARY = """.class public final LX/0RDL;
 """
 
 
+CONTROLLER = """.class public final LX/04TH;
+.super Ljava/lang/Object;
+
+.method public final A0I(Landroid/view/View;)V
+    .locals 42
+
+    move-object/from16 v8, p1
+    const-string v2, "DirectInboxController.onCreateView"
+    const v2, 0x7f0b2067
+    :cond_2a
+    return-void
+.end method
+"""
+
+
 class MessageRequestsLinkPatchTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -68,13 +83,20 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
         self.primary_file = self.root / "smali_classes12/X/0RDL.smali"
         self.primary_file.parent.mkdir(parents=True)
         self.primary_file.write_text(PRIMARY)
+        self.controller_file = self.root / "smali_classes26/X/04TH.smali"
+        self.controller_file.parent.mkdir(parents=True, exist_ok=True)
+        self.controller_file.write_text(CONTROLLER)
+        self.helper_file = self.root / "smali_classes26/com/gramforge/DirectRequestsHeaderFilter.smali"
 
     def test_check_does_not_write(self):
         before = self.file.read_bytes()
         primary_before = self.primary_file.read_bytes()
+        controller_before = self.controller_file.read_bytes()
         PATCH["patch"](self.root, check=True)
         self.assertEqual(before, self.file.read_bytes())
         self.assertEqual(primary_before, self.primary_file.read_bytes())
+        self.assertEqual(controller_before, self.controller_file.read_bytes())
+        self.assertFalse(self.helper_file.exists())
 
     def test_only_requests_link_is_hidden(self):
         PATCH["patch"](self.root)
@@ -89,6 +111,15 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
         self.assertEqual(primary.count(PATCH["PRIMARY_ADD"]), 1)
         self.assertIn("    sget-object v6, LX/01tK;->A00:LX/01tK;", primary)
         self.assertIn("    goto/16 :goto_4", primary)
+        controller = self.controller_file.read_text()
+        self.assertIn(PATCH["CONTROLLER_HOOK"], controller)
+        self.assertEqual(controller.count("DirectRequestsHeaderFilter;->install"), 1)
+        helper = self.helper_file.read_text()
+        self.assertIn('const-string v2, "Requests"', helper)
+        self.assertIn("const v0, 0x7f0b2067", helper)
+        self.assertIn("Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;", helper)
+        self.assertIn("Landroid/view/View;->setVisibility(I)V", helper)
+        self.assertNotIn('const-string v2, "Message requests"', helper)
 
     def test_no_write_if_request_mode_changes(self):
         self.file.write_text(INBOX.replace("LX/01tK;", "LX/01tJ;"))
@@ -114,6 +145,21 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
             PATCH["patch"](self.root)
         self.assertEqual(legacy_before, self.file.read_bytes())
         self.assertEqual(primary_before, self.primary_file.read_bytes())
+
+    def test_controller_mismatch_preserves_all_files(self):
+        self.controller_file.write_text(CONTROLLER.replace("0x7f0b2067", "0x7f0b2066"))
+        originals = [p.read_bytes() for p in (self.file, self.primary_file, self.controller_file)]
+        with self.assertRaises(PATCH["PatchMismatch"]):
+            PATCH["patch"](self.root)
+        self.assertEqual(originals, [p.read_bytes() for p in (self.file, self.primary_file, self.controller_file)])
+        self.assertFalse(self.helper_file.exists())
+
+    def test_missing_controller_fails_closed(self):
+        self.controller_file.unlink()
+        with self.assertRaises(PATCH["PatchMismatch"]):
+            PATCH["patch"](self.root)
+        self.assertEqual(INBOX, self.file.read_text())
+        self.assertEqual(PRIMARY, self.primary_file.read_text())
 
     def test_missing_primary_fails_closed(self):
         self.primary_file.unlink()
