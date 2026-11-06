@@ -25,7 +25,11 @@ case "${1:-instagram}" in
   *) die "Usage: $0 [instagram]" ;;
 esac
 
-./check-instagram-update.sh
+if [[ "${GRAMFORGE_SKIP_UPDATE_CHECK:-false}" != "true" ]]; then
+  ./check-instagram-update.sh
+else
+  [[ -f .update-state ]] || { echo "ERROR: pinned update state missing." >&2; exit 1; }
+fi
 JAVA_BIN="$(awk -F= '/^CLI_JAVA=/{print $2}' .update-state)"
 if [[ "$JAVA_BIN" == */* ]]; then
   [[ -x "$JAVA_BIN" ]] || die "The Java runtime recorded in .update-state is unavailable: $JAVA_BIN"
