@@ -2,9 +2,10 @@
 """Suppress Instagram's notification-permission upsell surfaces.
 
 Targets only UI solicitation: the feed/Direct permission upsell, the activity
-feed's Compose upsell row, dynamic onboarding push opt-in, and the specifically
-named notification-permission Quick Promotion. The OS permission API, actual
-push delivery, per-account notification controls, and manual settings remain.
+feed's Compose upsell row, dynamic onboarding push opt-in, the specifically
+named notification-permission Quick Promotion, and the inline Direct-thread
+reachability banner. The OS permission API, actual push delivery, per-account
+notification controls, and manual settings remain.
 """
 from __future__ import annotations
 
@@ -57,6 +58,43 @@ ACTIVITY_UPSELL_ROW_DISABLED = """.method public static final A0H(LX/1BaO;Ljava/
     return-void
 .end method"""
 
+# The Direct conversation's inline notification IgdsBanner is inflated by
+# LX/02Ru.A00, independently of the feed/Direct permission check. Only skip
+# its first branch; :cond_3 continues unrelated conversation banner logic.
+DIRECT_THREAD_BANNER_METHOD = (
+    "A00(Lcom/instagram/common/session/UserSession;LX/02Nt;LX/0QaX;LX/02Ru;)V"
+)
+DIRECT_THREAD_BANNER_ANCHOR = (
+    "    iget-object v0, v6, LX/02Ru;->A00:Ljava/lang/Integer;\n\n"
+    "    move-object/from16 v20, p0\n\n"
+    "    move-object/from16 v22, p2\n\n"
+    "    if-nez v0, :cond_3"
+)
+
+
+def suppress_direct_thread_banner(source: str) -> str:
+    matches = [m.group() for m in METHOD_RE.finditer(source)
+               if m.group().splitlines()[0].endswith(DIRECT_THREAD_BANNER_METHOD)]
+    if len(matches) != 1:
+        raise PatchMismatch("expected one Direct-thread banner renderer")
+    old = matches[0]
+    markers = (
+        '"NF_REACHABILITY_UPSELL_LAST_FIBONACCI_COOL_DOWN_UNTIL"',
+        '"nf_reachability_upsell_limits_direct_thread"',
+        "const v0, 0x7f0b31dd",  # push_upsell_viewstub
+        "const v0, 0x7f0b31dc",  # push_upsell_composer_banner
+        "new-instance v1, LX/0Ra9;",  # notification button callback
+        "    :cond_3\n",
+    )
+    if any(marker not in old for marker in markers) or old.count(DIRECT_THREAD_BANNER_ANCHOR) != 1:
+        raise PatchMismatch("Direct-thread notification banner structure changed")
+    revised = old.replace(
+        DIRECT_THREAD_BANNER_ANCHOR,
+        DIRECT_THREAD_BANNER_ANCHOR.replace("if-nez v0, :cond_3", "goto/16 :cond_3"),
+        1,
+    )
+    return source.replace(old, revised, 1)
+
 
 def patch(root: Path, *, check: bool = False) -> list[str]:
     if not root.is_dir():
@@ -65,6 +103,7 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
     onboarding_path = only_path(root, "0gKg.smali")
     row_path = only_path(root, "0C4e.smali")
     qp_path = only_path(root, "02jE.smali")
+    thread_path = only_path(root, "02Ru.smali")
 
     feed = replace_method(
         feed_path.read_text(),
@@ -109,13 +148,15 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
                "    if-nez v0, :goto_0\n\n"
                "    iget-object v1, v5, LX/044I;->A07:")
     updated_qp = qp.replace(old, old.replace(anchor, guarded, 1), 1)
+    updated_thread = suppress_direct_thread_banner(thread_path.read_text())
 
     if not check:
         feed_path.write_text(feed)
         onboarding_path.write_text(onboarding)
         row_path.write_text(row)
         qp_path.write_text(updated_qp)
-    return ["feed/Direct upsells", "activity-feed row", "onboarding push opt-in", "notification Quick Promotion"]
+        thread_path.write_text(updated_thread)
+    return ["feed/Direct upsells", "activity-feed row", "onboarding push opt-in", "notification Quick Promotion", "Direct-thread inline banner"]
 
 
 if __name__ == "__main__":

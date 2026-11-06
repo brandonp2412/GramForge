@@ -139,6 +139,28 @@ QP = """.class public final LX/02jE;
 .end method
 """
 
+DIRECT_THREAD = """.class public final LX/02Ru;
+.method public static final A00(Lcom/instagram/common/session/UserSession;LX/02Nt;LX/0QaX;LX/02Ru;)V
+    .locals 29
+    move-object/from16 v6, p3
+    iget-object v0, v6, LX/02Ru;->A00:Ljava/lang/Integer;
+
+    move-object/from16 v20, p0
+
+    move-object/from16 v22, p2
+
+    if-nez v0, :cond_3
+    const v0, 0x7f0b31dd
+    const-string v13, "NF_REACHABILITY_UPSELL_LAST_FIBONACCI_COOL_DOWN_UNTIL"
+    const-string v0, "nf_reachability_upsell_limits_direct_thread"
+    const v0, 0x7f0b31dc
+    new-instance v1, LX/0Ra9;
+    :cond_3
+    const-string v0, "preserve unrelated conversation banners"
+    return-void
+.end method
+"""
+
 
 class ReelsNotInterestedPatchTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -211,6 +233,7 @@ class NotificationNudgePatchTest(unittest.TestCase):
             "onboarding": put(self.root, "0gKg", ONBOARDING),
             "row": put(self.root, "0C4e", ROW),
             "qp": put(self.root, "02jE", QP),
+            "thread": put(self.root, "02Ru", DIRECT_THREAD),
         }
 
     def test_check_only(self) -> None:
@@ -225,6 +248,19 @@ class NotificationNudgePatchTest(unittest.TestCase):
         self.assertNotIn("PushNotificationUpsellRow", self.paths["row"].read_text())
         self.assertIn("if-nez v0, :goto_0", self.paths["qp"].read_text())
         self.assertIn("notification_permission_prompt", self.paths["qp"].read_text())
+        thread = self.paths["thread"].read_text()
+        self.assertIn("goto/16 :cond_3", thread)
+        self.assertNotIn("if-nez v0, :cond_3", thread)
+        self.assertIn("preserve unrelated conversation banners", thread)
+
+    def test_fails_closed_if_direct_thread_banner_structure_changes(self) -> None:
+        self.paths["thread"].write_text(self.paths["thread"].read_text().replace(
+            "nf_reachability_upsell_limits_direct_thread", "unrelated_banner"
+        ))
+        before = {key: path.read_bytes() for key, path in self.paths.items()}
+        with self.assertRaisesRegex(NUDGES["PatchMismatch"], "Direct-thread notification banner"):
+            NUDGES["patch"](self.root)
+        self.assertEqual(before, {key: path.read_bytes() for key, path in self.paths.items()})
 
     def test_fails_closed_on_removed_promotion_name(self) -> None:
         self.paths["qp"].write_text(self.paths["qp"].read_text().replace(
