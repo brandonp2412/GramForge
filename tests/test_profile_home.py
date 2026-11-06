@@ -102,5 +102,24 @@ class HomeTabTests(unittest.TestCase):
         self.assertIn("const/4 v1, 0x1", self.hiders.read_text())
 
 
+class ManifestCompatibilityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.manifest = Path(self.tmp.name) / "AndroidManifest.xml"
+
+    def test_removes_explicit_false_flag_without_other_changes(self) -> None:
+        before = '<manifest><application android:allowCrossUidActivitySwitchFromBelow="false" android:label="Instagram" /></manifest>'
+        self.manifest.write_text(before)
+        profile["patch_manifest_for_apktool"](self.manifest)
+        self.assertEqual(self.manifest.read_text(), '<manifest><application android:label="Instagram" /></manifest>')
+
+    def test_does_not_silently_change_true_or_missing_flag(self) -> None:
+        for marker in (' android:allowCrossUidActivitySwitchFromBelow="true"', ''):
+            self.manifest.write_text(f'<manifest><application{marker} /></manifest>')
+            with self.assertRaises(SystemExit):
+                profile["patch_manifest_for_apktool"](self.manifest)
+
+
 if __name__ == "__main__":
     unittest.main()

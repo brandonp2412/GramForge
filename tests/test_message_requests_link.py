@@ -84,6 +84,22 @@ HEADER = """.class public abstract LX/0ZY5;
 """
 
 
+CONTROLLER = """.class public final LX/04TH;
+.super Ljava/lang/Object;
+
+.method public final A0I(Landroid/view/View;)V
+    .locals 42
+
+    move-object/from16 v8, p1
+    const-string v2, "DirectInboxController.onCreateView"
+    const v2, 0x7f0b2067
+    :cond_2a
+    return-void
+.end method
+"""
+
+
+
 class MessageRequestsLinkPatchTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -92,17 +108,20 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
         self.legacy = self.root / "smali_classes26/X/05PM.smali"
         self.primary = self.root / "smali_classes12/X/0RDL.smali"
         self.header = self.root / "smali_classes26/X/0ZY5.smali"
-        for path, content in ((self.legacy, INBOX), (self.primary, PRIMARY), (self.header, HEADER)):
+        self.controller = self.root / "smali_classes26/X/04TH.smali"
+        self.helper = self.root / "smali_classes26/com/gramforge/DirectRequestsHeaderFilter.smali"
+        for path, content in ((self.legacy, INBOX), (self.primary, PRIMARY), (self.header, HEADER), (self.controller, CONTROLLER)):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
 
     def contents(self):
-        return tuple(path.read_bytes() for path in (self.legacy, self.primary, self.header))
+        return tuple(path.read_bytes() for path in (self.legacy, self.primary, self.header, self.controller))
 
     def test_check_does_not_write(self):
         before = self.contents()
         PATCH["patch"](self.root, check=True)
         self.assertEqual(before, self.contents())
+        self.assertFalse(self.helper.exists())
 
     def test_hides_only_requests_navigation_and_compose_action(self):
         PATCH["patch"](self.root)
@@ -119,7 +138,13 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
         self.assertIn("renderTitle(Ljava/lang/String;)V", header)
         self.assertIn('.method public static final A03()V', header)
         self.assertEqual(header.count('header_action_button'), 1)
-        self.assertEqual(len(list(self.root.rglob("*.smali"))), 3)
+        self.assertEqual(len(list(self.root.rglob("*.smali"))), 5)
+        controller = self.controller.read_text()
+        self.assertIn(PATCH["CONTROLLER_HOOK"], controller)
+        self.assertEqual(controller.count("DirectRequestsHeaderFilter;->install"), 1)
+        helper = self.helper.read_text()
+        self.assertIn('const-string v2, "Requests"', helper)
+        self.assertIn("Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;", helper)
 
     def test_fails_closed_when_compose_action_changed(self):
         self.header.write_text(HEADER.replace(
@@ -167,6 +192,31 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
             PATCH["patch"](self.root)
         self.assertEqual(before, self.contents())
 
+
+    def test_fails_closed_when_controller_changed(self):
+        self.controller.write_text(CONTROLLER.replace("0x7f0b2067", "0x7f0b2066"))
+        before = self.contents()
+        with self.assertRaises(PATCH["PatchMismatch"]):
+            PATCH["patch"](self.root)
+        self.assertEqual(before, self.contents())
+        self.assertFalse(self.helper.exists())
+
+    def test_fails_closed_when_helper_exists(self):
+        self.helper.parent.mkdir(parents=True)
+        self.helper.write_text("already owned")
+        before = self.contents()
+        with self.assertRaises(PATCH["PatchMismatch"]):
+            PATCH["patch"](self.root)
+        self.assertEqual(before, self.contents())
+        self.assertEqual(self.helper.read_text(), "already owned")
+
+    def test_fails_closed_when_controller_is_missing(self):
+        self.controller.unlink()
+        before = (self.legacy.read_bytes(), self.primary.read_bytes(), self.header.read_bytes())
+        with self.assertRaises(PATCH["PatchMismatch"]):
+            PATCH["patch"](self.root)
+        self.assertEqual(before, (self.legacy.read_bytes(), self.primary.read_bytes(), self.header.read_bytes()))
+        self.assertFalse(self.helper.exists())
 
 if __name__ == "__main__":
     unittest.main()

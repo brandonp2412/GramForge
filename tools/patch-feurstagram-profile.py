@@ -110,12 +110,27 @@ def replace_with_return(path: Path, method: str) -> None:
 .end method"""
     path.write_text(text[:start] + replacement + "\n" + text[end:])
 
+def patch_manifest_for_apktool(path: Path) -> None:
+    """Remove the explicit default-false API 37 flag unsupported by bundled aapt2.
+
+    Apktool 3.0.3's aapt2 cannot link the upstream manifest containing this
+    newer framework attribute. Removing its false value retains the default
+    behavior while permitting the existing resource-preserving rebuild.
+    """
+    text = path.read_text()
+    marker = ' android:allowCrossUidActivitySwitchFromBelow="false"'
+    if text.count(marker) != 1:
+        die(f"AndroidManifest.xml: expected one explicit false API 37 attribute, found {text.count(marker)}")
+    path.write_text(text.replace(marker, "", 1))
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         die("usage: patch-feurstagram-profile.py <apktool-decoded-dir>")
     root = Path(sys.argv[1])
     if not root.is_dir():
         die(f"decoded directory not found: {root}")
+    patch_manifest_for_apktool(root / "AndroidManifest.xml")
     patch_config(find_one(root, "com/feurstagram/extension/Config.smali"))
     patch_reels_nav_default(find_one(root, "com/feurstagram/extension/Hiders.smali"))
     replace_with_run_callback(find_one(root, "com/feurstagram/extension/FollowPrompt.smali"), "maybeShow")
