@@ -96,6 +96,85 @@ def suppress_direct_thread_banner(source: str) -> str:
     return source.replace(old, revised, 1)
 
 
+
+# The shared reachability factory supplies eligibility for Direct-inbox,
+# Direct-thread, and activity-feed/post-follow notification reminders. These
+# are the four concrete LX/0Uid implementations created exclusively there.
+# Returning false from B28() leaves their lifecycle and other app features
+# untouched while preventing presentation in every caller.
+REACHABILITY_ELIGIBILITY_MARKERS = {
+    "0S6U": ("LX/0S6U;->A03:LX/06KJ;", "LX/06KJ;->A01("),
+    "0RJO": ("LX/0RJO;->A02:Lcom/instagram/common/session/UserSession;",
+              "V2_REACHABILITY_UPSELL_GLOBAL_SHARED_DISMISS_COOLDOWN"),
+    "0S47": ("LX/0S47;->A0B:LX/06KJ;", "LX/06KJ;->A01("),
+    "0hf6": ("LX/0hf6;->A09:LX/0Jnv;", "LX/06KJ;->A01("),
+}
+REACHABILITY_ELIGIBILITY_DISABLED = """.method public final B28()Z
+    .locals 1
+    const/4 v0, 0x0
+    return v0
+.end method"""
+AUTO_PROMPT_DISABLED = """.method public static final A00(Landroid/app/Activity;Landroid/view/View;Lcom/instagram/common/session/UserSession;Ljava/lang/Integer;)V
+    .locals 0
+    return-void
+.end method"""
+REFOREGROUND_TOAST_DISABLED = """.method public static final A01(LX/0QBE;LX/0XFB;Ljava/lang/Integer;Ljava/lang/Integer;LX/1Btm;I)V
+    .locals 0
+    return-void
+.end method"""
+
+
+def suppress_profile_notification_stub(source: str) -> str:
+    matches = [m.group() for m in METHOD_RE.finditer(source)
+               if m.group().splitlines()[0].startswith(".method public static final A01(")]
+    if len(matches) != 1:
+        raise PatchMismatch("profile notification upsell renderer missing")
+    old = matches[0]
+    anchor = "    :cond_3b\n    const v8, 0x20042"
+    markers = ("LX/0Oo4;->A0H:LX/0Jnk;", "LX/03ii;->A01(Landroid/content/Context;)Z",
+               "    :cond_3c\n", "LX/0Jnk;->setVisibility(I)V")
+    if any(marker not in old for marker in markers) or old.count(anchor) != 1:
+        raise PatchMismatch("profile notification upsell structure changed")
+    revised = old.replace(anchor, anchor.replace(
+        "    const v8, 0x20042", "    goto/16 :cond_3c\n    const v8, 0x20042"), 1)
+    return source.replace(old, revised, 1)
+
+
+def additional_notification_updates(root: Path) -> dict[Path, str]:
+    factory = only_path(root, "0STR.smali").read_text()
+    if any(factory.count(f"new-instance v4, LX/{name};") != 1
+           for name in REACHABILITY_ELIGIBILITY_MARKERS):
+        raise PatchMismatch("reachability eligibility factory changed")
+    updates = {}
+    for name, markers in REACHABILITY_ELIGIBILITY_MARKERS.items():
+        path = only_path(root, f"{name}.smali")
+        updates[path] = replace_method(
+            path.read_text(), "B28()Z", markers, REACHABILITY_ELIGIBILITY_DISABLED
+        )
+
+    delayed = only_path(root, "05QN.smali")
+    updates[delayed] = replace_method(
+        delayed.read_text(),
+        "A00(Landroid/app/Activity;Landroid/view/View;Lcom/instagram/common/session/UserSession;Ljava/lang/Integer;)V",
+        ("preference_has_asked_push_permission_in_nux", '"direct_inbox"',
+         '"notification_feed"', "Landroid/view/View;->postDelayed("),
+        AUTO_PROMPT_DISABLED,
+    )
+
+    toast = only_path(root, "0QBE.smali")
+    updates[toast] = replace_method(
+        toast.read_text(),
+        "A01(LX/0QBE;LX/0XFB;Ljava/lang/Integer;Ljava/lang/Integer;LX/1Btm;I)V",
+        ("V2_REACHABILITY_UPSELL_REFOREGROUND_TOAST_LAST_SHOWN_TIMESTAMP",
+         "LX/0BfK;->A03()V", "LX/09qf;->A01"),
+        REFOREGROUND_TOAST_DISABLED,
+    )
+
+    profile = only_path(root, "0QCd.smali")
+    updates[profile] = suppress_profile_notification_stub(profile.read_text())
+    return updates
+
+
 def patch(root: Path, *, check: bool = False) -> list[str]:
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK missing: {root}")
@@ -149,14 +228,24 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
                "    iget-object v1, v5, LX/044I;->A07:")
     updated_qp = qp.replace(old, old.replace(anchor, guarded, 1), 1)
     updated_thread = suppress_direct_thread_banner(thread_path.read_text())
+    updates = {
+        feed_path: feed,
+        onboarding_path: onboarding,
+        row_path: row,
+        qp_path: updated_qp,
+        thread_path: updated_thread,
+    }
+    updates.update(additional_notification_updates(root))
 
     if not check:
-        feed_path.write_text(feed)
-        onboarding_path.write_text(onboarding)
-        row_path.write_text(row)
-        qp_path.write_text(updated_qp)
-        thread_path.write_text(updated_thread)
-    return ["feed/Direct upsells", "activity-feed row", "onboarding push opt-in", "notification Quick Promotion", "Direct-thread inline banner"]
+        for path, source in updates.items():
+            path.write_text(source)
+    return [
+        "feed/Direct upsells", "activity-feed row", "onboarding push opt-in",
+        "notification Quick Promotion", "Direct-thread inline banner",
+        "shared reachability banners", "delayed Direct/feed permission prompts",
+        "ref foreground notification toast", "profile notification upsell",
+    ]
 
 
 if __name__ == "__main__":

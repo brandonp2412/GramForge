@@ -162,6 +162,62 @@ DIRECT_THREAD = """.class public final LX/02Ru;
 """
 
 
+REACHABILITY_FACTORY = """.class public final LX/0STR;
+.method public static A00()V
+    .locals 5
+    new-instance v4, LX/0S6U;
+    new-instance v4, LX/0RJO;
+    new-instance v4, LX/0S47;
+    new-instance v4, LX/0hf6;
+    return-void
+.end method
+"""
+
+REACHABILITY_CLASSES = {
+    "0S6U": ("LX/0S6U;->A03:LX/06KJ;", "LX/06KJ;->A01("),
+    "0RJO": ("LX/0RJO;->A02:Lcom/instagram/common/session/UserSession;",
+             "V2_REACHABILITY_UPSELL_GLOBAL_SHARED_DISMISS_COOLDOWN"),
+    "0S47": ("LX/0S47;->A0B:LX/06KJ;", "LX/06KJ;->A01("),
+    "0hf6": ("LX/0hf6;->A09:LX/0Jnv;", "LX/06KJ;->A01("),
+}
+
+DELAYED_PROMPT = """.class public LX/05QN;
+.method public static final A00(Landroid/app/Activity;Landroid/view/View;Lcom/instagram/common/session/UserSession;Ljava/lang/Integer;)V
+    .locals 1
+    const-string v0, "preference_has_asked_push_permission_in_nux"
+    const-string v0, "direct_inbox"
+    const-string v0, "notification_feed"
+    invoke-virtual {p1, v0, v0}, Landroid/view/View;->postDelayed(Ljava/lang/Runnable;J)Z
+    return-void
+.end method
+"""
+
+REFOREGROUND_TOAST = """.class public LX/0QBE;
+.method public static final A01(LX/0QBE;LX/0XFB;Ljava/lang/Integer;Ljava/lang/Integer;LX/1Btm;I)V
+    .locals 1
+    const-string v0, "V2_REACHABILITY_UPSELL_REFOREGROUND_TOAST_LAST_SHOWN_TIMESTAMP"
+    invoke-virtual {v0}, LX/0BfK;->A03()V
+    sget-object v0, LX/09qf;->A01:LX/09qf;
+    return-void
+.end method
+"""
+
+PROFILE_STUB = """.class public LX/0QCd;
+.method public static final A01(Landroid/content/Context;)V
+    .locals 9
+    :cond_3b
+    const v8, 0x20042
+    invoke-virtual {v8, v3}, LX/03ii;->A01(Landroid/content/Context;)Z
+    iget-object v8, v0, LX/0Oo4;->A0H:LX/0Jnk;
+    invoke-interface {v8, v2}, LX/0Jnk;->setVisibility(I)V
+    :cond_3c
+    const-string v0, "unrelated follow-button setup preserved"
+    return-void
+.end method
+"""
+
+
+
 class ReelsNotInterestedPatchTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -234,7 +290,22 @@ class NotificationNudgePatchTest(unittest.TestCase):
             "row": put(self.root, "0C4e", ROW),
             "qp": put(self.root, "02jE", QP),
             "thread": put(self.root, "02Ru", DIRECT_THREAD),
+            "factory": put(self.root, "0STR", REACHABILITY_FACTORY),
+            "delayed": put(self.root, "05QN", DELAYED_PROMPT),
+            "toast": put(self.root, "0QBE", REFOREGROUND_TOAST),
+            "profile": put(self.root, "0QCd", PROFILE_STUB),
         }
+        for klass, markers in REACHABILITY_CLASSES.items():
+            method = f""".class public LX/{klass};
+.method public final B28()Z
+    .locals 1
+    const-string v0, "{markers[0]}"
+    const-string v0, "{markers[1]}"
+    const/4 v0, 0x1
+    return v0
+.end method
+"""
+            self.paths[klass] = put(self.root, klass, method)
 
     def test_check_only(self) -> None:
         before = {key: path.read_bytes() for key, path in self.paths.items()}
@@ -252,6 +323,35 @@ class NotificationNudgePatchTest(unittest.TestCase):
         self.assertIn("goto/16 :cond_3", thread)
         self.assertNotIn("if-nez v0, :cond_3", thread)
         self.assertIn("preserve unrelated conversation banners", thread)
+        for klass in REACHABILITY_CLASSES:
+            self.assertIn("const/4 v0, 0x0", self.paths[klass].read_text())
+            self.assertNotIn(REACHABILITY_CLASSES[klass][0], self.paths[klass].read_text())
+        self.assertNotIn("postDelayed", self.paths["delayed"].read_text())
+        self.assertNotIn("REFOREGROUND_TOAST_LAST_SHOWN_TIMESTAMP",
+                         self.paths["toast"].read_text())
+        profile = self.paths["profile"].read_text()
+        self.assertIn("goto/16 :cond_3c", profile)
+        self.assertIn("unrelated follow-button setup preserved", profile)
+
+    def test_fails_closed_if_reachability_factory_changes(self) -> None:
+        factory = self.paths["factory"]
+        factory.write_text(factory.read_text().replace(
+            "new-instance v4, LX/0S47;", "new-instance v4, LX/other;"))
+        before = {key: path.read_bytes() for key, path in self.paths.items()}
+        with self.assertRaisesRegex(NUDGES["PatchMismatch"],
+                                    "reachability eligibility factory changed"):
+            NUDGES["patch"](self.root)
+        self.assertEqual(before, {key: path.read_bytes() for key, path in self.paths.items()})
+
+    def test_fails_closed_if_delayed_prompt_changes(self) -> None:
+        delayed = self.paths["delayed"]
+        delayed.write_text(delayed.read_text().replace(
+            "postDelayed", "otherMethod"))
+        before = {key: path.read_bytes() for key, path in self.paths.items()}
+        with self.assertRaisesRegex(NUDGES["PatchMismatch"],
+                                    "notification-specific marker absent"):
+            NUDGES["patch"](self.root)
+        self.assertEqual(before, {key: path.read_bytes() for key, path in self.paths.items()})
 
     def test_fails_closed_if_direct_thread_banner_structure_changes(self) -> None:
         self.paths["thread"].write_text(self.paths["thread"].read_text().replace(
