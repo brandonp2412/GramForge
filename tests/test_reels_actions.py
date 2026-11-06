@@ -132,6 +132,36 @@ class ReelsActionPatchTests(unittest.TestCase):
         self.assertEqual((self.smali / "Save.smali").read_bytes(), before_save)
         self.assertEqual((self.smali / "RepostChild.smali").read_bytes(), before_child)
 
+    def test_accepts_current_instagram_litho_types(self) -> None:
+        # Instagram 454.0.0.54.77 changed the count component, append
+        # parameter and builder types without changing their wiring.
+        self.ufi.write_text(
+            self.ufi.read_text()
+            .replace("LX/00Ax;", "LX/01qF;")
+            .replace("LX/Builder;", "LX/01qM;")
+            .replace("LX/05x0;", "LX/06Aw;")
+            .replace("->DMp()", "->DN7()")
+            .replace('const-string v1, "ufi_count"',
+                     'const-string v1, "ufi_count"\\n    invoke-direct {p0}, LX/Ufi;->A0B()LX/01qF;')
+        )
+        updated_builder = self.builder.with_name("01qM.smali")
+        self.builder.rename(updated_builder)
+        self.builder = updated_builder
+        self.builder.write_text(
+            self.builder.read_text()
+            .replace("LX/Builder;", "LX/01qM;")
+            .replace("LX/05x0;", "LX/06Aw;")
+        )
+        self.assertEqual(
+            patch(self.root, check=True),
+            ["Save", "Repost", "Save count", "Repost count"],
+        )
+        self.assertEqual(
+            patch(self.root),
+            ["Save", "Repost", "Save count", "Repost count"],
+        )
+        self.assertEqual(self.ufi.read_text().count("const/4 v0, 0x0"), 4)
+
     def test_check_does_not_mutate(self) -> None:
         original = self.ufi.read_bytes()
         self.assertEqual(patch(self.root, check=True), ["Save", "Repost", "Save count", "Repost count"])

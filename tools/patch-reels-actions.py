@@ -79,14 +79,12 @@ def factory(source: str, component: str, marker: str | None) -> tuple[str, str, 
     return block.group(), name, signature
 
 
-def factory_by_marker(
-    source: str, marker: str, result_type: str
-) -> tuple[str, str, str]:
+def factory_by_marker(source: str, marker: str) -> tuple[str, str, str]:
     candidates = []
     for match in METHOD_RE.finditer(source):
         block = match.group()
         header = block.splitlines()[0]
-        if marker not in block or not header.endswith(f"){result_type}"):
+        if marker not in block or '"save_count"' not in block:
             continue
         signature = re.search(r"([^\s(]+)(\([^)]*\)L[^;]+;)$", header)
         if signature:
@@ -105,7 +103,7 @@ def repost_count_factory(
     matches = re.finditer(
         r"invoke-direct(?:/range)? \{[^\n]+\}, " + invocation
         + r"\s+move-result-object v\d+"
-        + r"\s+invoke-virtual \{v\d+, v\d+\}, L[^;]+;->[^\s(]+\(LX/05x0;\)V",
+        + r"\s+invoke-virtual \{v\d+, v\d+\}, L[^;]+;->[^\s(]+\(L[^;]+;\)V",
         source,
     )
     candidates = set()
@@ -114,7 +112,7 @@ def repost_count_factory(
         candidate = re.search(
             r"invoke-direct(?:/range)? \{[^\n]+\}, "
             + re.escape(owner)
-            + r"->(?P<name>[^\s(]+)(?P<signature>\([^)]*\)LX/00Ax;)",
+            + r"->(?P<name>[^\s(]+)(?P<signature>\([^)]*\)L[^;]+;)",
             following,
         )
         if candidate:
@@ -126,7 +124,9 @@ def repost_count_factory(
             match.group() for match in METHOD_RE.finditer(source)
             if match.group().splitlines()[0].endswith(f"{name}{signature}")
         ]
-        if len(blocks) == 1 and "->DMp()" in blocks[0] and '"ufi_count"' in blocks[0]:
+        if len(blocks) == 1 and '"ufi_count"' in blocks[0] and (
+            "->A0B(" in blocks[0] or "->DMp()" in blocks[0]
+        ):
             verified.append((blocks[0], name, signature))
     if len(verified) != 1:
         raise PatchMismatch(
@@ -137,7 +137,7 @@ def repost_count_factory(
 
 def verified_append_calls(
     source: str, owner: str, name: str, signature: str
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     invocation = re.escape(f"{owner}->{name}{signature}")
     all_calls = len(re.findall(r"invoke-direct(?:/range)? [^\n]+ " + invocation, source))
     pattern = re.compile(
@@ -145,27 +145,27 @@ def verified_append_calls(
         + invocation
         + r"\s+move-result-object (?P<value>v\d+)"
         + r"\s+invoke-virtual \{v\d+, (?P=value)\}, "
-        + r"(?P<builder>L[^;]+;)->(?P<append>[^\s(]+)\(LX/05x0;\)V"
+        + r"(?P<builder>L[^;]+;)->(?P<append>[^\s(]+)\((?P<arg>L[^;]+;)\)V"
     )
     calls = list(pattern.finditer(source))
     if not calls or len(calls) != all_calls:
         raise PatchMismatch(
             f"{name}: {len(calls)}/{all_calls} call sites append directly to a Litho builder"
         )
-    builders = {(call["builder"], call["append"]) for call in calls}
+    builders = {(call["builder"], call["append"], call["arg"]) for call in calls}
     if len(builders) != 1:
         raise PatchMismatch(f"{name}: multiple or inconsistent Reels list builders")
     return builders.pop()
 
 
-def verify_null_skipping_builder(root: Path, owner: str, append: str) -> None:
+def verify_null_skipping_builder(root: Path, owner: str, append: str, arg: str) -> None:
     paths = list(root.glob(f"smali*/{owner[1:-1]}.smali"))
     if len(paths) != 1:
         raise PatchMismatch(f"cannot uniquely find Litho builder {owner}")
     source = paths[0].read_text()
     blocks = [
         match.group() for match in METHOD_RE.finditer(source)
-        if match.group().splitlines()[0].endswith(f"{append}(LX/05x0;)V")
+        if match.group().splitlines()[0].endswith(f"{append}({arg})V")
     ]
     if len(blocks) != 1:
         raise PatchMismatch(f"cannot uniquely identify {owner}->{append}")
@@ -193,9 +193,7 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
 
     save_button = factory(ufi_source, marked["save"][2], MARKERS["ufi"])
     repost_button = factory(ufi_source, repost_component, None)
-    save_count = factory_by_marker(
-        ufi_source, MARKERS["save_count"], "LX/00Ax;"
-    )
+    save_count = factory_by_marker(ufi_source, MARKERS["save_count"])
     repost_count = repost_count_factory(
         ufi_source, ufi_owner, repost_button[1], repost_button[2]
     )
