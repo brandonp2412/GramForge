@@ -372,5 +372,103 @@ class NotificationNudgePatchTest(unittest.TestCase):
         self.assertEqual(before, {key: path.read_bytes() for key, path in self.paths.items()})
 
 
+class CurrentInstagramPatchTest(unittest.TestCase):
+    """Self-contained regression for Instagram 454.0.0.54.77 changes."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_organic_reels_action_direct_and_ads_untouched(self) -> None:
+        put(self.root, "0Bhj", """.class public LX/0Bhj;
+.method private final A0G(LX/14ys;Ljava/lang/Integer;JJ)LX/00e5;
+    .locals 2
+    const-string v0, "clips_ufi_more_button_component"
+    invoke-static {}, LX/0Bhj;->A0F()LX/00e5;
+    return-object v0
+.end method
+""")
+        callback = put(self.root, "0IAt", """.class public LX/0IAt;
+.method public final bridge synthetic invoke(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    .locals 37
+    :pswitch_4
+    const-string v0, "ads_more_button_tap"
+    :pswitch_5
+    check-cast v0, LX/03f3;
+    iput-object v8, v3, LX/06UU;->A01:LX/07FC;
+
+    iget-object v1, v3, LX/06UU;->A0P:LX/06UO;
+    const-string v0, "ClipsOrganicMediaItemViewMoreOptionsController_showSimplifiedContextMenu"
+    :goto_1
+    return-object v0
+.end method
+""")
+        put(self.root, "06VX", """.class public LX/06VX;
+.method public final A0a(Lcom/instagram/feed/media/mediaoption/MediaOption$Option;)V
+    .locals 1
+    const-string v0, "ClipsOrganicMoreOptionsHelper_handleSeeFewer"
+    invoke-virtual {p0, p1}, LX/06VX;->A0a(Lcom/instagram/feed/media/mediaoption/MediaOption$Option;)V
+    return-void
+.end method
+""")
+        before = callback.read_bytes()
+        NOT_INTERESTED["patch"](self.root, check=True)
+        self.assertEqual(callback.read_bytes(), before)
+        NOT_INTERESTED["patch"](self.root)
+        updated = callback.read_text()
+        self.assertIn("LX/06VX;->A0a(", updated)
+        self.assertIn("->NOT_INTERESTED:", updated)
+        self.assertIn('ads_more_button_tap', updated)
+        self.assertIn('goto/16 :goto_1', updated)
+
+    def test_notification_new_reachability_and_quick_promotion(self) -> None:
+        put(self.root, "02EI", FEED.replace("05QL", "02EI"))
+        put(self.root, "0M8e", ONBOARDING.replace("0gKg", "0M8e"))
+        put(self.root, "0DTC", ROW.replace("0C4e", "0DTC").replace(
+            "LX/1BaO;", "LX/14xx;").replace("0x7f138dc8", "0x7f138dc6"))
+        qp = put(self.root, "02oJ", """.class public LX/02oJ;
+.method public final GzO(Landroid/content/Context;LX/099A;Lcom/instagram/common/session/UserSession;LX/0OA1;LX/0lnA;Lcom/instagram/quickpromotion/intf/QuickPromotionSlot;Ljava/util/List;)V
+    .locals 12
+    :cond_23
+    :goto_13
+    const/4 v2, 0x1
+    :cond_24
+    const/4 v12, 0x1
+
+    invoke-static {v5, v2, v1, v12}, LX/0EBO;->A00(LX/0DEM;LX/0EBO;Ljava/util/Set;Z)V
+    const-string v0, "notification_permission_prompt"
+    return-void
+.end method
+""")
+        put(self.root, "0SE9", """.class public LX/0SE9;
+.method public static A00()LX/0Uzz;
+    .locals 5
+    new-instance v4, LX/0RG1;
+    new-instance v4, LX/01I3;
+    new-instance v4, LX/0R9T;
+    new-instance v4, LX/0kxq;
+    check-cast v4, LX/0Uzz;
+    return-object v4
+.end method
+""")
+        paths = {}
+        for klass in ("0RG1", "01I3", "0R9T", "0kxq"):
+            methods = ['B2L()Z'] + (['B2M()Z'] if klass != '0kxq' else [])
+            src = f".class public LX/{klass};\n.implements LX/0Uzz;\n"
+            for method in methods:
+                src += (f".method public final {method}\n    .locals 1\n"
+                        f"    iget-object v0, p0, LX/{klass};->A03:LX/02Dv;\n"
+                        "    const/4 v0, 0x1\n    return v0\n.end method\n")
+            paths[klass] = put(self.root, klass, src)
+        original = qp.read_bytes()
+        NUDGES["patch"](self.root, check=True)
+        self.assertEqual(qp.read_bytes(), original)
+        NUDGES["patch"](self.root)
+        self.assertIn("if-nez v0, :cond_23", qp.read_text())
+        for path in paths.values():
+            self.assertNotIn("const/4 v0, 0x1", path.read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,11 @@ METHOD_HEADER = (
     "A00(LX/1BaO;LX/05n4;LX/0Il1;LX/0Hxu;LX/0iom;LX/0Hes;IIZZZZZ)V"
 )
 MODEL_FIELD = "LX/0Il1;->A0O:Ljava/lang/String;"
+NEW_METHOD_HEADER = (
+    ".method public static final "
+    "A00(LX/14xx;LX/03Um;LX/0JBJ;LX/0INL;LX/0loo;LX/0ICJ;IIZZZZZ)V"
+)
+NEW_MODEL_FIELD = "LX/0JBJ;->A0O:Ljava/lang/String;"
 RUNTIME_CLASS = "Lcom/gramforge/CommentFilter;"
 ANCHOR = (
     "    invoke-static {v5, v10}, LX/00d6;->A0V(Ljava/lang/Object;I)V\n\n"
@@ -130,6 +135,16 @@ PATTERNS = (
     GENERIC_EXACT_PATTERN,
     GENERIC_TEMPLATES,
     INVESTMENT_BAIT,
+)
+NEW_ANCHOR = (
+    "    invoke-static {v5, v8}, LX/00f5;->A0W(Ljava/lang/Object;I)V\n\n"
+    "    const/4 v14, 0x1"
+)
+PROFILES = (
+    (METHOD_HEADER, MODEL_FIELD, ANCHOR,
+     "invoke-interface {v0, v1}, LX/1BaO;->Hg2(I)V"),
+    (NEW_METHOD_HEADER, NEW_MODEL_FIELD, NEW_ANCHOR,
+     "invoke-interface {v0, v1}, LX/14xx;->HgJ(I)V"),
 )
 HOOK = (
     "    # gramforge: hide formulaic comment rows before Compose opens a group.\n"
@@ -244,22 +259,25 @@ def patch(root: Path, *, check: bool = False) -> list[str]:
     if len(matches) != 1:
         raise PatchMismatch(f"expected one Compose CommentRow method, found {len(matches)}")
     method = matches[0].group()
-    if not method.startswith(METHOD_HEADER + "\n"):
+    profiles = [profile for profile in PROFILES if method.startswith(profile[0] + "\n")]
+    if len(profiles) != 1:
         raise PatchMismatch("CommentRow signature changed")
+    _, model_field, anchor, compose_call = profiles[0]
     if "gramforge_comment_visible" in source:
         raise PatchMismatch("comment filter already applied")
     if (
         ".locals 59" not in method
-        or method.count(ANCHOR) != 1
-        or method.count(MODEL_FIELD) != 1
-        or "invoke-interface {v0, v1}, LX/1BaO;->Hg2(I)V" not in method
+        or method.count(anchor) != 1
+        or method.count(model_field) != 1
+        or compose_call not in method
     ):
         raise PatchMismatch("CommentRow body or model text field changed")
     helper = root / path.relative_to(root).parts[0] / "com/gramforge/CommentFilter.smali"
     if helper.exists() or any(root.glob("smali*/com/gramforge/CommentFilter.smali")):
         raise PatchMismatch("comment filter helper already exists")
+    hook = HOOK.replace(MODEL_FIELD, model_field)
     updated = method.replace(
-        ANCHOR, ANCHOR.replace("    const/4 v14, 0x1", HOOK + "    const/4 v14, 0x1"), 1
+        anchor, anchor.replace("    const/4 v14, 0x1", hook + "    const/4 v14, 0x1"), 1
     )
     if not check:
         helper.parent.mkdir(parents=True, exist_ok=True)

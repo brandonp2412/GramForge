@@ -117,6 +117,79 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
     def contents(self):
         return tuple(path.read_bytes() for path in (self.legacy, self.primary, self.header, self.controller))
 
+
+    def test_current_instagram_454_54_77_paths(self):
+        for path in (self.legacy, self.primary, self.header, self.controller):
+            path.unlink()
+        current = {
+            "smali_classes26/X/02CE.smali": (
+                ".class public final LX/02CE;\n"
+                ".method public final A06()V\n"
+                "    const v7, 0x7f133e2b\n"
+                "    sget-object v14, LX/02zF;->A00:LX/02zF;\n"
+                "    invoke-direct/range {v12 .. v22}, LX/0CUF;-><init>"
+                "(LX/0ANq;LX/06fV;Ljava/lang/Integer;Ljava/lang/Integer;"
+                "Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;ZZZ)V\n"
+                "    invoke-virtual {v0, v7}, Ljava/util/AbstractCollection;->add(Ljava/lang/Object;)Z\n"
+                "    new-instance v5, LX/01Xs;\n"
+                "    return-void\n.end method\n"
+            ),
+            "smali_classes26/X/0ANg.smali": (
+                ".class public final LX/0ANg;\n"
+                ".method public final A01(Lcom/instagram/common/session/UserSession;"
+                "LX/06fV;LX/0Ka4;IZZZ)LX/01Xs;\n"
+                "    :goto_4\n"
+                "    iget-object v1, v4, Landroid/util/Pair;->second:Ljava/lang/Object;\n"
+                "    sget-object v6, LX/02zF;->A00:LX/02zF;\n"
+                "    invoke-direct/range {v21 .. v31}, LX/0CUF;-><init>"
+                "(LX/0ANq;LX/06fV;Ljava/lang/Integer;Ljava/lang/Integer;"
+                "Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;ZZZ)V\n"
+                "    invoke-virtual {v7, v1}, Ljava/util/AbstractCollection;->add(Ljava/lang/Object;)Z\n"
+                "    goto/16 :goto_4\n.end method\n"
+            ),
+            "smali_classes20/X/0UW5.smali": (
+                ".class public abstract LX/0UW5;\n"
+                ".method public static final A01(LX/14xx;LX/01XC;"
+                "Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;I)V\n"
+                '    const-string v0, "instagram.features.direct.inbox.feature.inboxheader.ui.DefaultHeader"\n'
+                '    const-string v0, "header_action_button"\n'
+                "    iget-object v2, v6, LX/01XC;->A02:Ljava/lang/String;\n"
+                + PATCH["CURRENT_COMPOSE_ACTION"]
+                + "    return-void\n.end method\n"
+            ),
+            "smali/X/015v.smali": (
+                ".class public final LX/015v;\n"
+                ".method public final onCreateView(Landroid/view/LayoutInflater;"
+                "Landroid/view/ViewGroup;Landroid/os/Bundle;)Landroid/view/View;\n"
+                '    const-string v0, "DirectInboxController.onCreateView"\n'
+                "    const v6, 0x7f0b2067\n"
+                "    iget-object v2, v2, LX/015v;->A0T:"
+                "Lcom/instagram/common/ui/widget/touchinterceptorlayout/TouchInterceptorFrameLayout;\n"
+                "    return-object v2\n.end method\n"
+            ),
+        }
+        for name, contents in current.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(contents)
+        before = {name: (self.root / name).read_bytes() for name in current}
+        PATCH["patch"](self.root, check=True)
+        self.assertEqual(before, {
+            name: (self.root / name).read_bytes() for name in current
+        })
+        PATCH["patch"](self.root)
+        self.assertIn(
+            PATCH["CURRENT_PRIMARY_SKIP"], (self.root / "smali_classes26/X/0ANg.smali").read_text()
+        )
+        self.assertNotIn(
+            "invoke-static/range {v10 .. v15}",
+            (self.root / "smali_classes20/X/0UW5.smali").read_text(),
+        )
+        self.assertIn(
+            "DirectRequestsHeaderFilter;->install",
+            (self.root / "smali/X/015v.smali").read_text(),
+        )
+
     def test_check_does_not_write(self):
         before = self.contents()
         PATCH["patch"](self.root, check=True)

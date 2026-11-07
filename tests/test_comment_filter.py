@@ -53,6 +53,26 @@ class CommentFilterTest(unittest.TestCase):
         self.assertEqual(self.row.read_bytes(), before)
         self.assertFalse((self.root / "smali_classes28/com/gramforge/CommentFilter.smali").exists())
 
+    def test_current_instagram_454_54_77_row(self) -> None:
+        updated = (
+            ROW.replace(
+                "A00(LX/1BaO;LX/05n4;LX/0Il1;LX/0Hxu;LX/0iom;LX/0Hes;IIZZZZZ)V",
+                "A00(LX/14xx;LX/03Um;LX/0JBJ;LX/0INL;LX/0loo;LX/0ICJ;IIZZZZZ)V",
+            )
+            .replace("LX/0Il1;", "LX/0JBJ;")
+            .replace("const/4 v10, 0x0", "const/4 v8, 0x0")
+            .replace("invoke-static {v5, v10}, LX/00d6;->A0V",
+                     "invoke-static {v5, v8}, LX/00f5;->A0W")
+            .replace("LX/1BaO;->Hg2(I)V", "LX/14xx;->HgJ(I)V")
+        )
+        self.row.write_text(updated)
+        self.assertEqual(len(PATCH["patch"](self.root, check=True)), 3)
+        PATCH["patch"](self.root)
+        rendered = self.row.read_text()
+        self.assertIn("LX/0JBJ;->A0O:Ljava/lang/String;", rendered)
+        self.assertLess(rendered.index("gramforge_comment_visible"),
+                        rendered.index("LX/14xx;->HgJ(I)V"))
+
     def test_hides_entire_row_before_compose_renders(self) -> None:
         PATCH["patch"](self.root)
         result = self.row.read_text()

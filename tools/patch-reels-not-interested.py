@@ -137,7 +137,63 @@ DISPATCH_MORE_ACTION = """.method public static gramForgePerformOverflowNotInter
     return-object v0
 .end method"""
 
+def patch_current(root: Path, *, check: bool = False) -> list[str]:
+    """Instagram 454.0.0.54.77: send organic UFI tap to its real menu action."""
+    owner_path = only_path(root, "0Bhj")
+    callback_path = only_path(root, "0IAt")
+    organic_path = only_path(root, "06VX")
+    owner, callback, organic = (p.read_text() for p in (
+        owner_path, callback_path, organic_path))
+    factory = only_method(owner, "A0G(LX/14ys;Ljava/lang/Integer;JJ)LX/00e5;")
+    if ('"clips_ufi_more_button_component"' not in factory
+            or "LX/0Bhj;->A0F(" not in factory):
+        raise PatchMismatch("new Reels More factory changed")
+    handler = only_method(callback, "invoke(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;")
+    if (handler.count("    :pswitch_5\n    check-cast v0, LX/03f3;") != 1
+            or "ClipsOrganicMediaItemViewMoreOptionsController_showSimplifiedContextMenu" not in handler
+            or "LX/06VX;->A0a(Lcom/instagram/feed/media/mediaoption/MediaOption$Option;)V" not in organic
+            or "ClipsOrganicMoreOptionsHelper_handleSeeFewer" not in organic
+            or "gramForgeSelectOrganicNotInterested" in handler):
+        raise PatchMismatch("new organic UFI action is not structurally verified")
+    anchor = """    iput-object v8, v3, LX/06UU;->A01:LX/07FC;
+
+    iget-object v1, v3, LX/06UU;->A0P:LX/06UO;"""
+    if handler.count(anchor) != 1:
+        raise PatchMismatch("organic action entry changed")
+    hook = """    iput-object v8, v3, LX/06UU;->A01:LX/07FC;
+
+    # gramForgeSelectOrganicNotInterested: execute Instagram's genuine organic
+    # More > Not interested handler; ads have a separate :pswitch_4 callback.
+    iget-object v1, v3, LX/06UU;->A0Z:LX/0VE9;
+    invoke-interface {v1}, LX/0VE9;->getValue()Ljava/lang/Object;
+    move-result-object v1
+    check-cast v1, LX/06VT;
+    iget-object v1, v1, LX/06VT;->A0F:LX/06VX;
+    iget-object v4, v0, LX/03f3;->A0g:Lcom/instagram/feed/media/Media;
+    if-nez v4, :gramforge_has_media
+    invoke-virtual {v0}, LX/03f3;->A0K()LX/07ks;
+    move-result-object v4
+    iget-object v4, v4, LX/07ks;->A00:Lcom/instagram/feed/media/Media;
+    :gramforge_has_media
+    if-eqz v4, :goto_1
+    const-string v6, "simplified_overflow_menu"
+    invoke-virtual {v1, v0, v8, v4, v6}, LX/06VX;->AWT(LX/03f3;LX/07FC;Lcom/instagram/feed/media/Media;Ljava/lang/String;)V
+    sget-object v4, Lcom/instagram/feed/media/mediaoption/MediaOption$Option;->NOT_INTERESTED:Lcom/instagram/feed/media/mediaoption/MediaOption$Option;
+    invoke-virtual {v1, v4}, LX/06VX;->A0a(Lcom/instagram/feed/media/mediaoption/MediaOption$Option;)V
+    goto/16 :goto_1
+
+    iget-object v1, v3, LX/06UU;->A0P:LX/06UO;"""
+    # No smali comments beginning with '#' in the body other than valid
+    # comment lines. Keep the old branch as a never-entered fallback.
+    updated = callback.replace(handler, handler.replace(anchor, hook, 1), 1)
+    if not check:
+        callback_path.write_text(updated)
+    return ["organic UFI More tap invokes native Not interested; ads unchanged"]
+
+
 def patch(root: Path, *, check: bool = False) -> list[str]:
+    if list(root.glob("smali*/X/0Bhj.smali")):
+        return patch_current(root, check=check)
     reels_path = only_path(root, "09LB")
     action_path = only_path(root, "0D9G")
     reels = reels_path.read_text()

@@ -289,11 +289,162 @@ def transform_controller(source: str) -> str:
     return source[:matches[0].start()] + updated + source[matches[0].end():]
 
 
+
+# Instagram 454.0.0.54.77 retains the four paths with changed obfuscated
+# owners, Compose types and constructor descriptors. Match the exact revised
+# call sites; do not relax the older 454.0.0.13.77 assertions.
+CURRENT_REQUEST_CONSTRUCTOR = (
+    "    invoke-direct/range {v12 .. v22}, LX/0CUF;-><init>"
+    "(LX/0ANq;LX/06fV;Ljava/lang/Integer;Ljava/lang/Integer;"
+    "Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;ZZZ)V"
+)
+CURRENT_PRIMARY_CONSTRUCTOR = (
+    "    invoke-direct/range {v21 .. v31}, LX/0CUF;-><init>"
+    "(LX/0ANq;LX/06fV;Ljava/lang/Integer;Ljava/lang/Integer;"
+    "Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;ZZZ)V"
+)
+CURRENT_PRIMARY_SKIP = PRIMARY_SKIP.replace("LX/01tK;", "LX/02zF;").replace(
+    "LX/00d6;", "LX/00f5;"
+)
+CURRENT_COMPOSE_ACTION = (
+    "    move-object v10, v7\n\n"
+    "    move-object v13, v2\n\n"
+    "    move-wide/from16 v14, v19\n\n"
+    "    invoke-static/range {v10 .. v15}, LX/05Oz;"
+    "->A1T(LX/14xx;LX/03Um;LX/05DA;Ljava/lang/String;J)V\n"
+)
+CURRENT_CONTROLLER_METHOD_RE = re.compile(
+    r"(?ms)^\.method public final onCreateView\(Landroid/view/LayoutInflater;"
+    r"Landroid/view/ViewGroup;Landroid/os/Bundle;\)Landroid/view/View;\n"
+    r".*?^\.end method$"
+)
+
+
+def transform_current_legacy(source: str) -> str:
+    match, method = _one_method(
+        source, ".class public final LX/02CE;", METHOD_RE, "current legacy navigation"
+    )
+    mode = "    sget-object v14, LX/02zF;->A00:LX/02zF;"
+    commit = "    new-instance v5, LX/01Xs;"
+    add = (
+        "    invoke-virtual {v0, v7}, "
+        "Ljava/util/AbstractCollection;->add(Ljava/lang/Object;)Z\n"
+    )
+    for marker in (REQUEST_TITLE, mode, CURRENT_REQUEST_CONSTRUCTOR, commit):
+        if method.count(marker) != 1:
+            raise PatchMismatch(f"current legacy Requests fingerprint changed: {marker}")
+    positions = [method.index(marker) for marker in (
+        REQUEST_TITLE, mode, CURRENT_REQUEST_CONSTRUCTOR, commit
+    )]
+    if positions != sorted(positions):
+        raise PatchMismatch("current legacy Requests insertion changed")
+    after_constructor = positions[2] + len(CURRENT_REQUEST_CONSTRUCTOR)
+    addition = method.find(add, after_constructor)
+    if addition < 0 or method[after_constructor:addition].strip():
+        raise PatchMismatch("current legacy Requests append no longer adjacent")
+    updated = method[:addition] + method[addition + len(add):]
+    return source[:match.start()] + updated + source[match.end():]
+
+
+def transform_current_primary(source: str) -> str:
+    method_re = re.compile(
+        r"(?ms)^\.method public final A01\(Lcom/instagram/common/session/UserSession;"
+        r"LX/06fV;LX/0Ka4;IZZZ\)LX/01Xs;\n.*?^\.end method$"
+    )
+    match, method = _one_method(
+        source, ".class public final LX/0ANg;", method_re, "current primary navigation"
+    )
+    mode = "    sget-object v6, LX/02zF;->A00:LX/02zF;"
+    add = (
+        "    invoke-virtual {v7, v1}, "
+        "Ljava/util/AbstractCollection;->add(Ljava/lang/Object;)Z\n"
+    )
+    for marker in (mode, CURRENT_PRIMARY_CONSTRUCTOR, add, "goto/16 :goto_4"):
+        if method.count(marker) != 1:
+            raise PatchMismatch(f"current primary Requests fingerprint changed: {marker}")
+    if not (method.index(mode) < method.index(CURRENT_PRIMARY_CONSTRUCTOR)
+            < method.index(add) < method.index("goto/16 :goto_4")):
+        raise PatchMismatch("current primary Requests insertion changed")
+    updated = method.replace(add, CURRENT_PRIMARY_SKIP + add, 1)
+    return source[:match.start()] + updated + source[match.end():]
+
+
+def transform_current_compose_header(source: str) -> str:
+    method_re = re.compile(
+        r"(?ms)^\.method public static final A01\(LX/14xx;LX/01XC;"
+        r"Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;I\)V\n"
+        r".*?^\.end method$"
+    )
+    match, method = _one_method(
+        source, ".class public abstract LX/0UW5;", method_re,
+        "current Compose DefaultHeader"
+    )
+    markers = (
+        "instagram.features.direct.inbox.feature.inboxheader.ui.DefaultHeader",
+        '    const-string v0, "header_action_button"',
+        "    iget-object v2, v6, LX/01XC;->A02:Ljava/lang/String;",
+        CURRENT_COMPOSE_ACTION,
+    )
+    for marker in markers:
+        if method.count(marker) != 1:
+            raise PatchMismatch(f"current Compose Requests action changed: {marker}")
+    updated = method.replace(
+        CURRENT_COMPOSE_ACTION,
+        CURRENT_COMPOSE_ACTION.replace(
+            "    invoke-static/range {v10 .. v15}, LX/05Oz;"
+            "->A1T(LX/14xx;LX/03Um;LX/05DA;Ljava/lang/String;J)V\n", ""
+        ), 1
+    )
+    return source[:match.start()] + updated + source[match.end():]
+
+
+def transform_current_controller(source: str) -> str:
+    match, method = _one_method(
+        source, ".class public final LX/015v;", CURRENT_CONTROLLER_METHOD_RE,
+        "current DirectInboxController"
+    )
+    markers = (
+        "DirectInboxController.onCreateView",
+        "const v6, 0x7f0b2067",
+        "LX/015v;->A0T:"
+        "Lcom/instagram/common/ui/widget/touchinterceptorlayout/TouchInterceptorFrameLayout;",
+    )
+    if any(marker not in method for marker in markers):
+        raise PatchMismatch("current Direct inbox root view fingerprint changed")
+    anchor = "    return-object v2\n"
+    if method.count(anchor) != 1:
+        raise PatchMismatch("current Direct inbox root return changed")
+    updated = method.replace(
+        anchor,
+        "    invoke-static {v2}, Lcom/gramforge/DirectRequestsHeaderFilter;"
+        "->install(Landroid/view/View;)V\n\n" + anchor,
+        1,
+    )
+    return source[:match.start()] + updated + source[match.end():]
+
+
 def patch(root: Path, *, check: bool = False) -> Path:
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK missing: {root}")
+    current_files = list(root.rglob("02CE.smali"))
+    current = (
+        len(current_files) == 1
+        and "0x7f133e2b" in current_files[0].read_text()
+        and "LX/0CUF;-><init>" in current_files[0].read_text()
+    )
+    filenames = (
+        ("02CE.smali", "0ANg.smali", "0UW5.smali", "015v.smali")
+        if current else
+        ("05PM.smali", "0RDL.smali", "0ZY5.smali", "04TH.smali")
+    )
+    transforms = (
+        (transform_current_legacy, transform_current_primary,
+         transform_current_compose_header, transform_current_controller)
+        if current else
+        (transform, transform_primary, transform_compose_header, transform_controller)
+    )
     paths = []
-    for filename in ("05PM.smali", "0RDL.smali", "0ZY5.smali", "04TH.smali"):
+    for filename in filenames:
         matches = list(root.rglob(filename))
         if len(matches) != 1:
             raise PatchMismatch(f"expected one {filename}, found {len(matches)}")
@@ -301,7 +452,6 @@ def patch(root: Path, *, check: bool = False) -> Path:
     helper_path = paths[3].parent.parent / "com/gramforge/DirectRequestsHeaderFilter.smali"
     if helper_path.exists():
         raise PatchMismatch(f"Direct inbox header helper already present: {helper_path}")
-    transforms = (transform, transform_primary, transform_compose_header, transform_controller)
     updates = [(path, fn(path.read_text())) for path, fn in zip(paths, transforms)]
     if not check:
         for path, updated in updates:

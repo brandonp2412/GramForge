@@ -175,7 +175,91 @@ def additional_notification_updates(root: Path) -> dict[Path, str]:
     return updates
 
 
+def patch_current(root: Path, *, check: bool = False) -> list[str]:
+    """Rebase suppression at the 454.0.0.54.77 UI eligibility gates."""
+    feed_path = only_path(root, "02EI.smali")
+    onboarding_path = only_path(root, "0M8e.smali")
+    row_path = only_path(root, "0DTC.smali")
+    qp_path = only_path(root, "02oJ.smali")
+    reach_factory_path = only_path(root, "0SE9.smali")
+    factory = reach_factory_path.read_text()
+    implementations = ("0RG1", "01I3", "0R9T", "0kxq")
+    if (any(factory.count(f"new-instance v4, LX/{name};") != 1 for name in implementations)
+            or factory.count("LX/0Uzz;") < 2):
+        raise PatchMismatch("new reachability factory changed")
+    feed = replace_method(
+        feed_path.read_text(),
+        "A00(Landroid/content/Context;Lcom/instagram/common/session/UserSession;Ljava/lang/String;)Z",
+        ("notification_feed", "direct_inbox", "preference_has_allowed_push_system_dialog"),
+        FEED_UPSELL_DISABLED,
+    )
+    onboarding = replace_method(
+        onboarding_path.read_text(), "A00()Z",
+        ("skip_push_opt_in_already_asked", "skip_push_opt_in_has_permission_already"),
+        ONBOARDING_OPT_IN_DISABLED,
+    )
+    row = replace_method(
+        row_path.read_text(),
+        "A0H(LX/14xx;Ljava/lang/String;Lkotlin/jvm/functions/Function1;I)V",
+        ("PushNotificationUpsellRow", "0x7f138dc6"),
+        ACTIVITY_UPSELL_ROW_DISABLED.replace("LX/1BaO;", "LX/14xx;"),
+    )
+    qp = qp_path.read_text()
+    qp_method = [m.group() for m in METHOD_RE.finditer(qp)
+                 if m.group().splitlines()[0].startswith(".method public final GzO(")]
+    if len(qp_method) != 1 or '"notification_permission_prompt"' not in qp_method[0]:
+        raise PatchMismatch("new notification Quick Promotion resolver changed")
+    anchor = """    :cond_24
+    const/4 v12, 0x1
+
+    invoke-static {v5, v2, v1, v12}, LX/0EBO;->A00(LX/0DEM;LX/0EBO;Ljava/util/Set;Z)V"""
+    if qp_method[0].count(anchor) != 1 or "    :cond_23\n    :goto_13" not in qp_method[0]:
+        raise PatchMismatch("new Quick Promotion eligibility branch changed")
+    guarded = """    :cond_24
+    iget-object v0, v5, LX/0DEM;->A0A:LX/0EGo;
+    iget-object v0, v0, LX/0EGo;->A00:Ljava/lang/String;
+    const-string v3, "notification_permission_prompt"
+    invoke-virtual {v3, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+    move-result v0
+    if-nez v0, :cond_23
+    const/4 v12, 0x1
+
+    invoke-static {v5, v2, v1, v12}, LX/0EBO;->A00(LX/0DEM;LX/0EBO;Ljava/util/Set;Z)V"""
+    qp = qp.replace(qp_method[0], qp_method[0].replace(anchor, guarded, 1), 1)
+    updates = {feed_path: feed, onboarding_path: onboarding, row_path: row, qp_path: qp}
+    disabled = """.method public final B2L()Z
+    .locals 1
+    const/4 v0, 0x0
+    return v0
+.end method"""
+    disabled_secondary = disabled.replace("B2L()", "B2M()")
+    for name in implementations:
+        path = only_path(root, f"{name}.smali")
+        source = path.read_text()
+        if ".implements LX/0Uzz;" not in source:
+            raise PatchMismatch(f"{name} is no longer a reachability implementation")
+        source = replace_method(
+            source, "B2L()Z",
+            (f"LX/{name};", "LX/02Dv;"), disabled,
+        )
+        if name != "0kxq":
+            source = replace_method(
+                source, "B2M()Z",
+                (f"LX/{name};", "LX/02Dv;"), disabled_secondary,
+            )
+        updates[path] = source
+    if not check:
+        for path, source in updates.items():
+            path.write_text(source)
+    return [
+        "feed/Direct permission nudges", "activity row", "onboarding opt-in",
+        "notification Quick Promotion", "four reachability implementations (Direct, activity, profile)",
+    ]
+
+
 def patch(root: Path, *, check: bool = False) -> list[str]:
+    if list(root.glob("smali*/X/02EI.smali")):
+        return patch_current(root, check=check)
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK missing: {root}")
     feed_path = only_path(root, "05QL.smali")
