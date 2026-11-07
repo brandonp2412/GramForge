@@ -199,9 +199,10 @@ def suppress_current_compose_empty_inbox_notification(source: str) -> str:
     invoke-static {v9, v4}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
     move-result v4
     if-eqz v4, :gramforge_keep_empty_cta
-    const-string v4, "Turn on notifications so you don't miss new messages."
-    invoke-static {v18, v4}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
+    const-string v19, "Turn on notifications so you don't miss new messages."
+    invoke-static/range {v18 .. v19}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
     move-result v4
+    const/16 v19, 0x0
     if-eqz v4, :gramforge_keep_empty_cta
     const/4 v9, 0x0
     move-object/from16 v18, v19

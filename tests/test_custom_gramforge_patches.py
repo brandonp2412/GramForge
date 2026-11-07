@@ -498,6 +498,8 @@ class CurrentInstagramPatchTest(unittest.TestCase):
         NUDGES["patch"](self.root)
         self.assertIn("if-nez v0, :cond_23", qp.read_text())
         self.assertIn('const-string v4, "Turn on notifications"', inbox.read_text())
+        self.assertIn("invoke-static/range {v18 .. v19}", inbox.read_text())
+        self.assertIn("const/16 v19, 0x0", inbox.read_text())
         self.assertIn("const/4 v9, 0x0", inbox.read_text())
         self.assertIn("move-object/from16 v18, v19", inbox.read_text())
         self.assertIn("LX/0WVT;->A01", inbox.read_text())
