@@ -300,6 +300,28 @@ CURRENT_DIRECT_HEADER_FILTER_SMALI = CURRENT_DIRECT_HEADER_FILTER_SMALI.replace(
     new-instance v1, Lcom/gramforge/DirectRequestsHeaderFilter;""",
     1,
 )
+# Temporary emulator tracing for the current inbox surface and listener lifecycle.
+CURRENT_DIRECT_HEADER_FILTER_SMALI = CURRENT_DIRECT_HEADER_FILTER_SMALI.replace(
+    "    move-object v0, p0\n\n    if-eqz v0, :done",
+    """    const-string v0, "GramForgeInbox"
+    const-string v1, "listener install"
+    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+    move-object v0, p0
+
+    if-eqz v0, :done""", 1,
+).replace(
+    "    invoke-static {v0}, Lcom/gramforge/DirectRequestsHeaderFilter;->hide(Landroid/view/View;)V\n\n    return-void\n.end method\n\n.method public static hide",
+    """    const-string v0, "GramForgeInbox"
+    const-string v1, "layout scan"
+    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+    iget-object v0, p0, Lcom/gramforge/DirectRequestsHeaderFilter;->inbox:Landroid/view/View;
+    invoke-static {v0}, Lcom/gramforge/DirectRequestsHeaderFilter;->hide(Landroid/view/View;)V
+
+    return-void
+.end method
+
+.method public static hide""", 1,
+)
 for marker in ("check_nudge_description", "Ljava/util/WeakHashMap;", "->getParent()"):
     if marker not in CURRENT_DIRECT_HEADER_FILTER_SMALI:
         raise RuntimeError(f"current inbox helper anchor changed: {marker}")
@@ -535,6 +557,9 @@ def transform_current_main_activity(source: str) -> str:
     hook = anchor + """
 
     if-eqz p1, :gramforge_no_focus
+    const-string v0, "GramForgeInbox"
+    const-string v1, "activity focus granted"
+    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
     invoke-virtual {p0}, Landroid/app/Activity;->getWindow()Landroid/view/Window;
     move-result-object v0
     if-eqz v0, :gramforge_no_focus
