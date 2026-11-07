@@ -195,6 +195,15 @@ def suppress_current_compose_empty_inbox_notification(source: str) -> str:
         raise PatchMismatch("current Compose inbox empty state notification CTA changed")
     guard = """    :goto_8
     iget-object v9, v1, LX/01KJ;->A0I:Ljava/lang/String;
+    const-string v4, "GramForgeEmpty/body"
+    move-object/from16 v5, v18
+    invoke-static {v5}, Ljava/lang/String;->valueOf(Ljava/lang/Object;)Ljava/lang/String;
+    move-result-object v5
+    invoke-static {v4, v5}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+    const-string v4, "GramForgeEmpty/button"
+    invoke-static {v9}, Ljava/lang/String;->valueOf(Ljava/lang/Object;)Ljava/lang/String;
+    move-result-object v5
+    invoke-static {v4, v5}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
     const-string v4, "Turn on notifications"
     invoke-static {v9, v4}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
     move-result v4
@@ -208,7 +217,25 @@ def suppress_current_compose_empty_inbox_notification(source: str) -> str:
     move-object/from16 v18, v19
     :gramforge_keep_empty_cta
 """
-    return source.replace(old, old.replace(anchor, guard, 1), 1)
+    revised = old.replace(anchor, guard, 1)
+    head = ".method public static final " + signature + "\n    .locals 44\n"
+    if revised.count(head) != 1:
+        raise PatchMismatch("current Compose empty-state register frame changed")
+    revised = revised.replace(head, head + """    const-string v0, "GramForgeEmpty"
+    const-string v1, "row entered"
+    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+""", 1)
+    return source.replace(old, revised, 1)
+
+
+def trace_current_compose_empty_header(source: str) -> str:
+    marker = ".method public static final A01(LX/14xx;LX/01JK;I)V\n    .locals 9\n"
+    if source.count(marker) != 1 or "EmptyStateInboxHeader.kt:46" not in source:
+        raise PatchMismatch("current Compose empty inbox header changed")
+    return source.replace(marker, marker + """    const-string v0, "GramForgeEmpty"
+    const-string v1, "header entered"
+    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+""", 1)
 
 
 def patch_current(root: Path, *, check: bool = False) -> list[str]:
@@ -287,6 +314,8 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
         updates[path] = source
     empty_path = only_path(root, "0YVX.smali")
     updates[empty_path] = suppress_current_compose_empty_inbox_notification(empty_path.read_text())
+    header_path = only_path(root, "0pxp.smali")
+    updates[header_path] = trace_current_compose_empty_header(header_path.read_text())
     if not check:
         for path, source in updates.items():
             path.write_text(source)

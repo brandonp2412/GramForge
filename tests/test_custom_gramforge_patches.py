@@ -492,6 +492,13 @@ class CurrentInstagramPatchTest(unittest.TestCase):
     return-void
 .end method
 """)
+        empty_header = put(self.root, "0pxp", """.class public abstract LX/0pxp;
+.method public static final A01(LX/14xx;LX/01JK;I)V
+    .locals 9
+    const-string v0, "EmptyStateInboxHeader.kt:46"
+    return-void
+.end method
+""")
         original = qp.read_bytes()
         NUDGES["patch"](self.root, check=True)
         self.assertEqual(qp.read_bytes(), original)
@@ -502,6 +509,8 @@ class CurrentInstagramPatchTest(unittest.TestCase):
         self.assertIn("const/16 v19, 0x0", inbox.read_text())
         self.assertIn("const/4 v9, 0x0", inbox.read_text())
         self.assertIn("move-object/from16 v18, v19", inbox.read_text())
+        self.assertIn("header entered", empty_header.read_text())
+        self.assertIn("row entered", inbox.read_text())
         self.assertIn("LX/0WVT;->A01", inbox.read_text())
         for path in paths.values():
             self.assertNotIn("const/4 v0, 0x1", path.read_text())
