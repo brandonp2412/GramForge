@@ -212,6 +212,60 @@ DIRECT_HEADER_FILTER_SMALI = """.class public final Lcom/gramforge/DirectRequest
 """
 
 
+# The current Direct inbox has a separate Bloks empty-state permission CTA.
+# Observe the entire inbox view, not only the legacy thread RecyclerView.
+# Suppress the exact prompt and its button; retain "No messages yet", inbox,
+# notification settings, and ordinary conversation content.
+CURRENT_DIRECT_HEADER_FILTER_SMALI = DIRECT_HEADER_FILTER_SMALI.replace(
+    """    const v0, 0x7f0b2067
+
+    invoke-virtual {p0, v0}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+
+    move-result-object v0""",
+    """    move-object v0, p0""",
+    1,
+).replace(
+    """    const-string v2, "Requests"
+
+    invoke-static {v1, v2}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z""",
+    """    const-string v2, "Turn on notifications"
+
+    invoke-static {v1, v2}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
+    move-result v2
+    if-eqz v2, :check_nudge_description
+    invoke-virtual {p0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+    move-result-object v0
+    instance-of v2, v0, Landroid/view/View;
+    if-eqz v2, :done
+    check-cast v0, Landroid/view/View;
+    const/16 v2, 0x8
+    invoke-virtual {v0, v2}, Landroid/view/View;->setVisibility(I)V
+    return-void
+
+    :check_nudge_description
+    const-string v2, "Turn on notifications so you don't miss new messages."
+
+    invoke-static {v1, v2}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
+    move-result v2
+    if-nez v2, :hide_prompt_text
+    const-string v2, "Requests"
+
+    invoke-static {v1, v2}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z""",
+    1,
+).replace(
+    """    if-eqz v1, :done
+
+    const/16 v1, 0x8""",
+    """    if-eqz v1, :done
+
+    :hide_prompt_text
+    const/16 v1, 0x8""",
+    1,
+)
+if "check_nudge_description" not in CURRENT_DIRECT_HEADER_FILTER_SMALI:
+    raise RuntimeError("current inbox helper anchor changed")
+
+
 def _one_method(source: str, class_marker: str, method_re: re.Pattern, name: str):
     if class_marker not in source:
         raise PatchMismatch(f"{name} class changed")
@@ -457,7 +511,7 @@ def patch(root: Path, *, check: bool = False) -> Path:
         for path, updated in updates:
             path.write_text(updated)
         helper_path.parent.mkdir(parents=True, exist_ok=True)
-        helper_path.write_text(DIRECT_HEADER_FILTER_SMALI)
+        helper_path.write_text(CURRENT_DIRECT_HEADER_FILTER_SMALI if current else DIRECT_HEADER_FILTER_SMALI)
     return paths[3]
 
 

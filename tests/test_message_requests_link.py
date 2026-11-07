@@ -189,6 +189,12 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
             "DirectRequestsHeaderFilter;->install",
             (self.root / "smali/X/015v.smali").read_text(),
         )
+        helper = (self.root / "smali/com/gramforge/DirectRequestsHeaderFilter.smali").read_text()
+        self.assertIn('const-string v2, "Turn on notifications"', helper)
+        self.assertIn("don't miss new messages", helper)
+        self.assertIn("Landroid/view/View;->getParent()", helper)
+        self.assertIn("move-object v0, p0", helper)
+        self.assertIn('const-string v2, "Requests"', helper)
 
     def test_check_does_not_write(self):
         before = self.contents()

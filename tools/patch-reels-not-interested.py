@@ -148,6 +148,30 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
     if ('"clips_ufi_more_button_component"' not in factory
             or "LX/0Bhj;->A0F(" not in factory):
         raise PatchMismatch("new Reels More factory changed")
+    renderer = only_method(owner, "A0F(LX/14ys;LX/0Bhj;Ljava/lang/Integer;Ljava/lang/String;Lkotlin/jvm/functions/Function1;JJZZ)LX/00e5;")
+    accessibility = """    const v1, 0x7f13594a
+
+    invoke-static {v7, v1}, LX/00P2;->A0Q(LX/0FY3;I)Ljava/lang/String;"""
+    drawable = """    :cond_6
+    invoke-static {v7, v0}, LX/00P2;->A0P(LX/0FY3;I)Landroid/graphics/drawable/Drawable;"""
+    if (renderer.count(accessibility) != 1 or renderer.count(drawable) != 1
+            or "const v0, 0x7f0827ed" not in renderer
+            or "const v0, 0x7f0827f0" not in renderer
+            or "LX/03f3;->A19:Z" not in renderer):
+        raise PatchMismatch("Reels More drawable or accessibility contract changed")
+    renderer = renderer.replace(accessibility, """    const v1, 0x7f13594a
+    iget-boolean v15, v5, LX/03f3;->A19:Z
+    if-nez v15, :gramforge_more_accessibility
+    const v1, 0x7f131e9b
+    :gramforge_more_accessibility
+    invoke-static {v7, v1}, LX/00P2;->A0Q(LX/0FY3;I)Ljava/lang/String;""", 1)
+    renderer = renderer.replace(drawable, """    :cond_6
+    iget-boolean v14, v5, LX/03f3;->A19:Z
+    if-nez v14, :gramforge_more_drawable
+    const v0, 0x7f0825a0
+    :gramforge_more_drawable
+    invoke-static {v7, v0}, LX/00P2;->A0P(LX/0FY3;I)Landroid/graphics/drawable/Drawable;""", 1)
+    updated_owner = owner.replace(only_method(owner, "A0F(LX/14ys;LX/0Bhj;Ljava/lang/Integer;Ljava/lang/String;Lkotlin/jvm/functions/Function1;JJZZ)LX/00e5;"), renderer, 1)
     handler = only_method(callback, "invoke(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;")
     if (handler.count("    :pswitch_5\n    check-cast v0, LX/03f3;") != 1
             or "ClipsOrganicMediaItemViewMoreOptionsController_showSimplifiedContextMenu" not in handler
@@ -187,8 +211,9 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
     # comment lines. Keep the old branch as a never-entered fallback.
     updated = callback.replace(handler, handler.replace(anchor, hook, 1), 1)
     if not check:
+        owner_path.write_text(updated_owner)
         callback_path.write_text(updated)
-    return ["organic UFI More tap invokes native Not interested; ads unchanged"]
+    return ["organic UFI invokes native Not interested", "Not interested eye-off icon and accessibility label", "ads unchanged"]
 
 
 def patch(root: Path, *, check: bool = False) -> list[str]:

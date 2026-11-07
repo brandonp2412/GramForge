@@ -388,6 +388,18 @@ class CurrentInstagramPatchTest(unittest.TestCase):
     invoke-static {}, LX/0Bhj;->A0F()LX/00e5;
     return-object v0
 .end method
+.method public static final A0F(LX/14ys;LX/0Bhj;Ljava/lang/Integer;Ljava/lang/String;Lkotlin/jvm/functions/Function1;JJZZ)LX/00e5;
+    .locals 22
+    const v1, 0x7f13594a
+
+    invoke-static {v7, v1}, LX/00P2;->A0Q(LX/0FY3;I)Ljava/lang/String;
+    const v0, 0x7f0827f0
+    const v0, 0x7f0827ed
+    iget-boolean v0, v5, LX/03f3;->A19:Z
+    :cond_6
+    invoke-static {v7, v0}, LX/00P2;->A0P(LX/0FY3;I)Landroid/graphics/drawable/Drawable;
+    return-object v0
+.end method
 """)
         callback = put(self.root, "0IAt", """.class public LX/0IAt;
 .method public final bridge synthetic invoke(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
@@ -421,6 +433,10 @@ class CurrentInstagramPatchTest(unittest.TestCase):
         self.assertIn("->NOT_INTERESTED:", updated)
         self.assertIn('ads_more_button_tap', updated)
         self.assertIn('goto/16 :goto_1', updated)
+        renderer = NOT_INTERESTED["only_path"](self.root, "0Bhj").read_text()
+        self.assertIn("const v0, 0x7f0825a0", renderer)
+        self.assertIn("const v1, 0x7f131e9b", renderer)
+        self.assertIn("if-nez v14, :gramforge_more_drawable", renderer)
 
     def test_notification_new_reachability_and_quick_promotion(self) -> None:
         put(self.root, "02EI", FEED.replace("05QL", "02EI"))
