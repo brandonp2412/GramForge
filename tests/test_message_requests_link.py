@@ -167,6 +167,15 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
                 "Lcom/instagram/common/ui/widget/touchinterceptorlayout/TouchInterceptorFrameLayout;\n"
                 "    return-object v2\n.end method\n"
             ),
+            "smali_classes13/com/instagram/mainactivity/InstagramMainActivity.smali": (
+                ".class public final Lcom/instagram/mainactivity/InstagramMainActivity;\n"
+                ".method public final onWindowFocusChanged(Z)V\n"
+                "    .locals 5\n"
+                "    invoke-super {p0, p1}, "
+                "Lcom/instagram/base/activity/IgFragmentActivity;->onWindowFocusChanged(Z)V\n"
+                '    const-string v0, "MainActivityAccountHelper.ACCOUNT_SWITCH_EVENT"\n'
+                "    return-void\n.end method\n"
+            ),
         }
         for name, contents in current.items():
             path = self.root / name
@@ -194,7 +203,11 @@ class MessageRequestsLinkPatchTests(unittest.TestCase):
         self.assertIn("don't miss new messages", helper)
         self.assertIn("Landroid/view/View;->getParent()", helper)
         self.assertIn("move-object v0, p0", helper)
+        self.assertIn("Ljava/util/WeakHashMap;", helper)
         self.assertIn('const-string v2, "Requests"', helper)
+        activity = (self.root / "smali_classes13/com/instagram/mainactivity/InstagramMainActivity.smali").read_text()
+        self.assertIn("->getDecorView()Landroid/view/View;", activity)
+        self.assertIn("DirectRequestsHeaderFilter;->install", activity)
 
     def test_check_does_not_write(self):
         before = self.contents()
