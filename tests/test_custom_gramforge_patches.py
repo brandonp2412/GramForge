@@ -477,25 +477,15 @@ class CurrentInstagramPatchTest(unittest.TestCase):
                         f"    iget-object v0, p0, LX/{klass};->A03:LX/02Dv;\n"
                         "    const/4 v0, 0x1\n    return v0\n.end method\n")
             paths[klass] = put(self.root, klass, src)
-        inbox = put(self.root, "0YVX", """.class public abstract LX/0YVX;
-.method public static final A04(LX/14xx;LX/01KJ;LX/02Lu;LX/01Km;IIZ)V
-    .locals 44
-    const-string v0, "InboxEmptyStateRow (InboxEmptyStateRow.kt:69)"
-    iget-object v4, v1, LX/01KJ;->A08:Ljava/lang/CharSequence;
-    move-object/from16 v18, v4
-    :goto_8
-    iget-object v9, v1, LX/01KJ;->A0I:Ljava/lang/String;
-    if-eqz v9, :cond_1
-    invoke-static/range {v21 .. v44}, LX/0WVT;->A01(LX/0nuF;LX/14xx;LX/03Um;LX/00wB;LX/11kz;Ljava/lang/CharSequence;Ljava/lang/CharSequence;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;LX/03Zz;IIIJJ)V
-    invoke-static {v0, v5, v4, v12, v6}, LX/0T86;->A0I(LX/14xx;LX/14az;Ljava/lang/Integer;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)V
-    :cond_1
-    return-void
-.end method
-""")
         empty_header = put(self.root, "0pxp", """.class public abstract LX/0pxp;
-.method public static final A01(LX/14xx;LX/01JK;I)V
-    .locals 9
-    const-string v0, "EmptyStateInboxHeader.kt:46"
+.method public static final A03(LX/14xx;LX/01JK;I)V
+    .locals 43
+    const-string v0, "PrismEmptyState (EmptyStateInboxHeader.kt:77)"
+    const v0, 0x7f13305f
+    move-result-object v31
+    move-object/from16 v5, v20
+    invoke-static/range {v22 .. v45}, LX/0WVT;->A01(LX/0nuF;LX/14xx;LX/03Um;LX/00wB;LX/11kz;Ljava/lang/CharSequence;Ljava/lang/CharSequence;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;LX/03Zz;IIIJJ)V
+    invoke-static {v3, v8, v7, v5, v9}, LX/0T86;->A0I(LX/14xx;LX/14az;Ljava/lang/Integer;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)V
     return-void
 .end method
 """)
@@ -504,14 +494,19 @@ class CurrentInstagramPatchTest(unittest.TestCase):
         self.assertEqual(qp.read_bytes(), original)
         NUDGES["patch"](self.root)
         self.assertIn("if-nez v0, :cond_23", qp.read_text())
-        self.assertIn('const-string v4, "Turn on notifications"', inbox.read_text())
-        self.assertIn("invoke-static/range {v18 .. v19}", inbox.read_text())
-        self.assertIn("const/16 v19, 0x0", inbox.read_text())
-        self.assertIn("const/4 v9, 0x0", inbox.read_text())
-        self.assertIn("move-object/from16 v18, v19", inbox.read_text())
-        self.assertIn("header entered", empty_header.read_text())
-        self.assertIn("row entered", inbox.read_text())
-        self.assertIn("LX/0WVT;->A01", inbox.read_text())
+        revised = empty_header.read_text()
+        self.assertIn("DirectNudgePredicate;->isNudgeButton", revised)
+        self.assertIn("DirectNudgePredicate;->isNudgeBody", revised)
+        self.assertIn("const/16 v20, 0x0", revised)
+        self.assertIn("const/16 v27, 0x0", revised)
+        self.assertIn("if-eqz v5, :gramforge_skip_prompt_button", revised)
+        self.assertIn("0x7f13305f", revised)
+        self.assertIn("LX/0WVT;->A01", revised)
+        self.assertNotIn("GramForgeEmpty", revised)
+        predicate = self.root / "smali/com/gramforge/DirectNudgePredicate.smali"
+        self.assertTrue(predicate.exists())
+        self.assertIn('const-string v0, "Turn on notifications"', predicate.read_text())
+        self.assertIn("don't miss new messages.", predicate.read_text())
         for path in paths.values():
             self.assertNotIn("const/4 v0, 0x1", path.read_text())
 

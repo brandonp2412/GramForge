@@ -175,67 +175,68 @@ def additional_notification_updates(root: Path) -> dict[Path, str]:
     return updates
 
 
+CURRENT_DIRECT_NUDGE_PREDICATE = """\
+.class public final Lcom/gramforge/DirectNudgePredicate;
+.super Ljava/lang/Object;
+
+.method public static isNudgeButton(Ljava/lang/String;)Z
+    .locals 1
+    const-string v0, "Turn on notifications"
+    invoke-static {p0, v0}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
+    move-result v0
+    return v0
+.end method
+
+.method public static isNudgeBody(Ljava/lang/String;)Z
+    .locals 1
+    const-string v0, "Turn on notifications so you don't miss new messages."
+    invoke-static {p0, v0}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
+    move-result v0
+    return v0
+.end method
+"""
+
+
 def suppress_current_compose_empty_inbox_notification(source: str) -> str:
-    """Remove the exact push CTA copy/action from the Compose empty inbox row."""
-    signature = "A04(LX/14xx;LX/01KJ;LX/02Lu;LX/01Km;IIZ)V"
+    """Remove only the notification pitch and CTA from the active Prism empty inbox."""
+    signature = "A03(LX/14xx;LX/01JK;I)V"
     matches = [m.group() for m in METHOD_RE.finditer(source)
                if m.group().splitlines()[0] == ".method public static final " + signature]
     if len(matches) != 1:
-        raise PatchMismatch("current Compose inbox empty state renderer changed")
+        raise PatchMismatch("current Compose Prism empty inbox renderer changed")
     old = matches[0]
     markers = (
-        "InboxEmptyStateRow (InboxEmptyStateRow.kt:69)",
-        "iget-object v4, v1, LX/01KJ;->A08:Ljava/lang/CharSequence;",
-        "move-object/from16 v18, v4",
+        ".locals 43",
+        "PrismEmptyState (EmptyStateInboxHeader.kt:77)",
+        "move-object/from16 v5, v20",
         "LX/0WVT;->A01(LX/0nuF;LX/14xx;LX/03Um;",
-        "LX/0T86;->A0I(LX/14xx;LX/14az;Ljava/lang/Integer;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)V",
     )
-    anchor = "    :goto_8\n    iget-object v9, v1, LX/01KJ;->A0I:Ljava/lang/String;\n"
-    if any(marker not in old for marker in markers) or old.count(anchor) != 1:
-        raise PatchMismatch("current Compose inbox empty state notification CTA changed")
-    guard = """    :goto_8
-    iget-object v9, v1, LX/01KJ;->A0I:Ljava/lang/String;
-    const-string v4, "GramForgeEmpty/body"
-    move-object/from16 v5, v18
-    invoke-static {v5}, Ljava/lang/String;->valueOf(Ljava/lang/Object;)Ljava/lang/String;
-    move-result-object v5
-    invoke-static {v4, v5}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-    const-string v4, "GramForgeEmpty/button"
-    invoke-static {v9}, Ljava/lang/String;->valueOf(Ljava/lang/Object;)Ljava/lang/String;
-    move-result-object v5
-    invoke-static {v4, v5}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-    const-string v4, "Turn on notifications"
-    invoke-static {v9, v4}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
-    move-result v4
-    if-eqz v4, :gramforge_keep_empty_cta
-    const-string v19, "Turn on notifications so you don't miss new messages."
-    invoke-static/range {v18 .. v19}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
-    move-result v4
-    const/16 v19, 0x0
-    if-eqz v4, :gramforge_keep_empty_cta
-    const/4 v9, 0x0
-    move-object/from16 v18, v19
-    :gramforge_keep_empty_cta
+    render = "    invoke-static/range {v22 .. v45}, LX/0WVT;->A01("
+    cta = ("    invoke-static {v3, v8, v7, v5, v9}, LX/0T86;->A0I("
+           "LX/14xx;LX/14az;Ljava/lang/Integer;Ljava/lang/String;"
+           "Lkotlin/jvm/functions/Function0;)V")
+    if (any(marker not in old for marker in markers)
+            or old.count(render) != 1 or old.count(cta) != 1):
+        raise PatchMismatch("current Prism empty inbox notification arguments changed")
+    guard = """    invoke-static/range {v20 .. v20}, Lcom/gramforge/DirectNudgePredicate;->isNudgeButton(Ljava/lang/String;)Z
+    move-result v5
+    if-eqz v5, :gramforge_keep_empty_prompt
+    invoke-static/range {v27 .. v27}, Lcom/gramforge/DirectNudgePredicate;->isNudgeBody(Ljava/lang/String;)Z
+    move-result v5
+    if-eqz v5, :gramforge_keep_empty_prompt
+    const/16 v20, 0x0
+    const/16 v27, 0x0
+    :gramforge_keep_empty_prompt
 """
-    revised = old.replace(anchor, guard, 1)
-    head = ".method public static final " + signature + "\n    .locals 44\n"
-    if revised.count(head) != 1:
-        raise PatchMismatch("current Compose empty-state register frame changed")
-    revised = revised.replace(head, head + """    const-string v0, "GramForgeEmpty"
-    const-string v1, "row entered"
-    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-""", 1)
-    return source.replace(old, revised, 1)
+    updated = old.replace(render, guard + render, 1)
+    updated = updated.replace(
+        cta,
+        "    if-eqz v5, :gramforge_skip_prompt_button\n"
+        + cta + "\n    :gramforge_skip_prompt_button",
+        1,
+    )
+    return source.replace(old, updated, 1)
 
-
-def trace_current_compose_empty_header(source: str) -> str:
-    marker = ".method public static final A01(LX/14xx;LX/01JK;I)V\n    .locals 9\n"
-    if source.count(marker) != 1 or "EmptyStateInboxHeader.kt:46" not in source:
-        raise PatchMismatch("current Compose empty inbox header changed")
-    return source.replace(marker, marker + """    const-string v0, "GramForgeEmpty"
-    const-string v1, "header entered"
-    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-""", 1)
 
 
 def patch_current(root: Path, *, check: bool = False) -> list[str]:
@@ -312,12 +313,15 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
                 (f"LX/{name};", "LX/02Dv;"), disabled_secondary,
             )
         updates[path] = source
-    empty_path = only_path(root, "0YVX.smali")
-    updates[empty_path] = suppress_current_compose_empty_inbox_notification(empty_path.read_text())
     header_path = only_path(root, "0pxp.smali")
-    updates[header_path] = trace_current_compose_empty_header(header_path.read_text())
+    updates[header_path] = suppress_current_compose_empty_inbox_notification(header_path.read_text())
+    predicate_path = root / "smali/com/gramforge/DirectNudgePredicate.smali"
+    if predicate_path.exists():
+        raise PatchMismatch("Compose notification predicate helper already present")
+    updates[predicate_path] = CURRENT_DIRECT_NUDGE_PREDICATE
     if not check:
         for path, source in updates.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(source)
     return [
         "feed/Direct permission nudges", "activity row", "onboarding opt-in",
