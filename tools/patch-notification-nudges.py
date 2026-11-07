@@ -175,27 +175,39 @@ def additional_notification_updates(root: Path) -> dict[Path, str]:
     return updates
 
 
-def suppress_current_direct_inbox_permission_view(source: str) -> str:
-    """Hide only the Direct inbox notification upsell view on resume."""
-    signature = "onResume()V"
+def suppress_current_compose_empty_inbox_notification(source: str) -> str:
+    """Remove the exact push CTA copy/action from the Compose empty inbox row."""
+    signature = "A04(LX/14xx;LX/01KJ;LX/02Lu;LX/01Km;IIZ)V"
     matches = [m.group() for m in METHOD_RE.finditer(source)
-               if m.group().splitlines()[0] == ".method public final " + signature]
+               if m.group().splitlines()[0] == ".method public static final " + signature]
     if len(matches) != 1:
-        raise PatchMismatch("current Direct inbox onResume method changed")
+        raise PatchMismatch("current Compose inbox empty state renderer changed")
     old = matches[0]
     markers = (
-        "const v1, 0x7f0b1c55",  # exact inbox upsell view, not all notification UI
-        "LX/03dk;->A01(Landroid/content/Context;)Z",  # actual OS permission
-        "LX/0Eml;->A0W(Landroid/view/View;II)V",  # targeted visibility
-        "    :cond_c\n    const/16 v2, 0x8\n\n    :cond_d",
+        "InboxEmptyStateRow (InboxEmptyStateRow.kt:69)",
+        "iget-object v4, v1, LX/01KJ;->A08:Ljava/lang/CharSequence;",
+        "move-object/from16 v18, v4",
+        "LX/0WVT;->A01(LX/0nuF;LX/14xx;LX/03Um;",
+        "LX/0T86;->A0I(LX/14xx;LX/14az;Ljava/lang/Integer;Ljava/lang/String;Lkotlin/jvm/functions/Function0;)V",
     )
-    anchor = ("    move-result v1\n\n    const/4 v2, 0x0\n\n"
-              "    if-eqz v1, :cond_d")
+    anchor = "    :goto_8\n    iget-object v9, v1, LX/01KJ;->A0I:Ljava/lang/String;\n"
     if any(marker not in old for marker in markers) or old.count(anchor) != 1:
-        raise PatchMismatch("current Direct inbox permission upsell branch changed")
-    revised = old.replace(anchor, anchor.replace("const/4 v2, 0x0",
-                                               "const/16 v2, 0x8"), 1)
-    return source.replace(old, revised, 1)
+        raise PatchMismatch("current Compose inbox empty state notification CTA changed")
+    guard = """    :goto_8
+    iget-object v9, v1, LX/01KJ;->A0I:Ljava/lang/String;
+    const-string v4, "Turn on notifications"
+    invoke-static {v9, v4}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
+    move-result v4
+    if-eqz v4, :gramforge_keep_empty_cta
+    const-string v4, "Turn on notifications so you don't miss new messages."
+    invoke-static {v18, v4}, Landroid/text/TextUtils;->equals(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Z
+    move-result v4
+    if-eqz v4, :gramforge_keep_empty_cta
+    const/4 v9, 0x0
+    move-object/from16 v18, v19
+    :gramforge_keep_empty_cta
+"""
+    return source.replace(old, old.replace(anchor, guard, 1), 1)
 
 
 def patch_current(root: Path, *, check: bool = False) -> list[str]:
@@ -249,10 +261,8 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
 
     invoke-static {v5, v2, v1, v12}, LX/0EBO;->A00(LX/0DEM;LX/0EBO;Ljava/util/Set;Z)V"""
     qp = qp.replace(qp_method[0], qp_method[0].replace(anchor, guarded, 1), 1)
-    inbox_path = only_path(root, "015v.smali")
-    inbox = suppress_current_direct_inbox_permission_view(inbox_path.read_text())
     updates = {feed_path: feed, onboarding_path: onboarding, row_path: row,
-               qp_path: qp, inbox_path: inbox}
+               qp_path: qp}
     disabled = """.method public final B2L()Z
     .locals 1
     const/4 v0, 0x0
@@ -274,13 +284,15 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
                 (f"LX/{name};", "LX/02Dv;"), disabled_secondary,
             )
         updates[path] = source
+    empty_path = only_path(root, "0YVX.smali")
+    updates[empty_path] = suppress_current_compose_empty_inbox_notification(empty_path.read_text())
     if not check:
         for path, source in updates.items():
             path.write_text(source)
     return [
         "feed/Direct permission nudges", "activity row", "onboarding opt-in",
         "notification Quick Promotion", "four reachability implementations (Direct, activity, profile)",
-        "Direct inbox permission CTA",
+        "Compose empty inbox push CTA",
     ]
 
 
