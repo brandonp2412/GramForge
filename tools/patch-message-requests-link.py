@@ -309,18 +309,6 @@ CURRENT_DIRECT_HEADER_FILTER_SMALI = CURRENT_DIRECT_HEADER_FILTER_SMALI.replace(
     move-object v0, p0
 
     if-eqz v0, :done""", 1,
-).replace(
-    "    invoke-static {v0}, Lcom/gramforge/DirectRequestsHeaderFilter;->hide(Landroid/view/View;)V\n\n    return-void\n.end method\n\n.method public static hide",
-    """    const-string v0, "GramForgeInbox"
-    const-string v1, "layout scan"
-    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-    iget-object v0, p0, Lcom/gramforge/DirectRequestsHeaderFilter;->inbox:Landroid/view/View;
-    invoke-static {v0}, Lcom/gramforge/DirectRequestsHeaderFilter;->hide(Landroid/view/View;)V
-
-    return-void
-.end method
-
-.method public static hide""", 1,
 )
 for marker in ("check_nudge_description", "Ljava/util/WeakHashMap;", "->getParent()"):
     if marker not in CURRENT_DIRECT_HEADER_FILTER_SMALI:
