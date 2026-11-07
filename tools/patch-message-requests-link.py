@@ -300,16 +300,6 @@ CURRENT_DIRECT_HEADER_FILTER_SMALI = CURRENT_DIRECT_HEADER_FILTER_SMALI.replace(
     new-instance v1, Lcom/gramforge/DirectRequestsHeaderFilter;""",
     1,
 )
-# Temporary emulator tracing for the current inbox surface and listener lifecycle.
-CURRENT_DIRECT_HEADER_FILTER_SMALI = CURRENT_DIRECT_HEADER_FILTER_SMALI.replace(
-    "    move-object v0, p0\n\n    if-eqz v0, :done",
-    """    const-string v0, "GramForgeInbox"
-    const-string v1, "listener install"
-    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-    move-object v0, p0
-
-    if-eqz v0, :done""", 1,
-)
 for marker in ("check_nudge_description", "Ljava/util/WeakHashMap;", "->getParent()"):
     if marker not in CURRENT_DIRECT_HEADER_FILTER_SMALI:
         raise RuntimeError(f"current inbox helper anchor changed: {marker}")
@@ -526,39 +516,6 @@ def transform_current_controller(source: str) -> str:
     return source[:match.start()] + updated + source[match.end():]
 
 
-def transform_current_main_activity(source: str) -> str:
-    main_class = ".class public final Lcom/instagram/mainactivity/InstagramMainActivity;"
-    method_re = re.compile(
-        r"(?ms)^\.method public final onWindowFocusChanged\(Z\)V\n.*?^\.end method$"
-    )
-    match, method = _one_method(
-        source, main_class, method_re, "current MainTabActivity focus"
-    )
-    anchor = (
-        "    invoke-super {p0, p1}, "
-        "Lcom/instagram/base/activity/IgFragmentActivity;->onWindowFocusChanged(Z)V"
-    )
-    if (method.count(anchor) != 1 or "    .locals 5" not in method
-            or "MainActivityAccountHelper.ACCOUNT_SWITCH_EVENT" not in method
-            or "gramforge_no_focus" in method):
-        raise PatchMismatch("current main activity lifecycle changed")
-    hook = anchor + """
-
-    if-eqz p1, :gramforge_no_focus
-    const-string v0, "GramForgeInbox"
-    const-string v1, "activity focus granted"
-    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-    invoke-virtual {p0}, Landroid/app/Activity;->getWindow()Landroid/view/Window;
-    move-result-object v0
-    if-eqz v0, :gramforge_no_focus
-    invoke-virtual {v0}, Landroid/view/Window;->getDecorView()Landroid/view/View;
-    move-result-object v0
-    invoke-static {v0}, Lcom/gramforge/DirectRequestsHeaderFilter;->install(Landroid/view/View;)V
-    :gramforge_no_focus"""
-    updated = method.replace(anchor, hook, 1)
-    return source[:match.start()] + updated + source[match.end():]
-
-
 def patch(root: Path, *, check: bool = False) -> Path:
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK missing: {root}")
@@ -569,14 +526,13 @@ def patch(root: Path, *, check: bool = False) -> Path:
         and "LX/0CUF;-><init>" in current_files[0].read_text()
     )
     filenames = (
-        ("02CE.smali", "0ANg.smali", "0UW5.smali", "015v.smali", "InstagramMainActivity.smali")
+        ("02CE.smali", "0ANg.smali", "0UW5.smali", "015v.smali")
         if current else
         ("05PM.smali", "0RDL.smali", "0ZY5.smali", "04TH.smali")
     )
     transforms = (
         (transform_current_legacy, transform_current_primary,
-         transform_current_compose_header, transform_current_controller,
-         transform_current_main_activity)
+         transform_current_compose_header, transform_current_controller)
         if current else
         (transform, transform_primary, transform_compose_header, transform_controller)
     )

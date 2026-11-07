@@ -477,11 +477,33 @@ class CurrentInstagramPatchTest(unittest.TestCase):
                         f"    iget-object v0, p0, LX/{klass};->A03:LX/02Dv;\n"
                         "    const/4 v0, 0x1\n    return v0\n.end method\n")
             paths[klass] = put(self.root, klass, src)
+        inbox = put(self.root, "015v", """.class public final LX/015v;
+.method public final onResume()V
+    .locals 17
+    const v1, 0x7f0b1c55
+    invoke-virtual {v2, v1}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+    invoke-virtual {v2, v1}, LX/03dk;->A01(Landroid/content/Context;)Z
+    move-result v1
+
+    const/4 v2, 0x0
+
+    if-eqz v1, :cond_d
+
+    :cond_c
+    const/16 v2, 0x8
+
+    :cond_d
+    invoke-static {v3, v2, v1}, LX/0Eml;->A0W(Landroid/view/View;II)V
+    return-void
+.end method
+""")
         original = qp.read_bytes()
         NUDGES["patch"](self.root, check=True)
         self.assertEqual(qp.read_bytes(), original)
         NUDGES["patch"](self.root)
         self.assertIn("if-nez v0, :cond_23", qp.read_text())
+        self.assertIn("const/16 v2, 0x8\n\n    if-eqz v1, :cond_d", inbox.read_text())
+        self.assertIn("LX/03dk;->A01(Landroid/content/Context;)Z", inbox.read_text())
         for path in paths.values():
             self.assertNotIn("const/4 v0, 0x1", path.read_text())
 

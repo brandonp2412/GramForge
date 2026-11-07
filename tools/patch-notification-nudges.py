@@ -175,6 +175,29 @@ def additional_notification_updates(root: Path) -> dict[Path, str]:
     return updates
 
 
+def suppress_current_direct_inbox_permission_view(source: str) -> str:
+    """Hide only the Direct inbox notification upsell view on resume."""
+    signature = "onResume()V"
+    matches = [m.group() for m in METHOD_RE.finditer(source)
+               if m.group().splitlines()[0] == ".method public final " + signature]
+    if len(matches) != 1:
+        raise PatchMismatch("current Direct inbox onResume method changed")
+    old = matches[0]
+    markers = (
+        "const v1, 0x7f0b1c55",  # exact inbox upsell view, not all notification UI
+        "LX/03dk;->A01(Landroid/content/Context;)Z",  # actual OS permission
+        "LX/0Eml;->A0W(Landroid/view/View;II)V",  # targeted visibility
+        "    :cond_c\n    const/16 v2, 0x8\n\n    :cond_d",
+    )
+    anchor = ("    move-result v1\n\n    const/4 v2, 0x0\n\n"
+              "    if-eqz v1, :cond_d")
+    if any(marker not in old for marker in markers) or old.count(anchor) != 1:
+        raise PatchMismatch("current Direct inbox permission upsell branch changed")
+    revised = old.replace(anchor, anchor.replace("const/4 v2, 0x0",
+                                               "const/16 v2, 0x8"), 1)
+    return source.replace(old, revised, 1)
+
+
 def patch_current(root: Path, *, check: bool = False) -> list[str]:
     """Rebase suppression at the 454.0.0.54.77 UI eligibility gates."""
     feed_path = only_path(root, "02EI.smali")
@@ -226,7 +249,10 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
 
     invoke-static {v5, v2, v1, v12}, LX/0EBO;->A00(LX/0DEM;LX/0EBO;Ljava/util/Set;Z)V"""
     qp = qp.replace(qp_method[0], qp_method[0].replace(anchor, guarded, 1), 1)
-    updates = {feed_path: feed, onboarding_path: onboarding, row_path: row, qp_path: qp}
+    inbox_path = only_path(root, "015v.smali")
+    inbox = suppress_current_direct_inbox_permission_view(inbox_path.read_text())
+    updates = {feed_path: feed, onboarding_path: onboarding, row_path: row,
+               qp_path: qp, inbox_path: inbox}
     disabled = """.method public final B2L()Z
     .locals 1
     const/4 v0, 0x0
@@ -254,6 +280,7 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
     return [
         "feed/Direct permission nudges", "activity row", "onboarding opt-in",
         "notification Quick Promotion", "four reachability implementations (Direct, activity, profile)",
+        "Direct inbox permission CTA",
     ]
 
 
