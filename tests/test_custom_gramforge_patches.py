@@ -295,6 +295,11 @@ class NotificationNudgePatchTest(unittest.TestCase):
             "toast": put(self.root, "0QBE", REFOREGROUND_TOAST),
             "profile": put(self.root, "0QCd", PROFILE_STUB),
         }
+        # Old 454.0.0.13.77 also has an unrelated 02EI class. The mere
+        # presence of an obfuscated filename must not select the newer patch.
+        self.paths["unrelated_02EI"] = put(
+            self.root, "02EI", ".class public LX/02EI;\n"
+        )
         for klass, markers in REACHABILITY_CLASSES.items():
             method = f""".class public LX/{klass};
 .method public final B28()Z

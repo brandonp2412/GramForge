@@ -331,7 +331,14 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
 
 
 def patch(root: Path, *, check: bool = False) -> list[str]:
-    if list(root.glob("smali*/X/02EI.smali")):
+    # Obfuscated class names are reused between Instagram builds. Detect the
+    # current variant by its notification-specific markers, not the filename.
+    current_feed = list(root.glob("smali*/X/02EI.smali"))
+    if len(current_feed) == 1 and all(
+        marker in current_feed[0].read_text()
+        for marker in ("notification_feed", "direct_inbox",
+                       "preference_has_allowed_push_system_dialog")
+    ):
         return patch_current(root, check=check)
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK missing: {root}")
