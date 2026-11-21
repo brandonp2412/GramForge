@@ -102,6 +102,79 @@ class HomeTabTests(unittest.TestCase):
         self.assertIn("const/4 v1, 0x1", self.hiders.read_text())
 
 
+class SurfaceDefaultsTests(unittest.TestCase):
+    """FeurStagram 456 stores surface defaults in a map instead of getters."""
+
+    @staticmethod
+    def sample_config() -> str:
+        defaults = [
+            ("block_feed", "3"), ("block_explore", "3"),
+            ("block_reels", "3"), ("block_friends_lane", "3"),
+            ("block_stories", "6"), ("block_instants", "3"),
+            ("block_notes", "3"), ("block_suggested", "3"),
+            ("block_ads", "3"), ("block_comments", "6"),
+            ("block_notifications", "6"), ("block_threads", "3"),
+        ]
+        lines = [
+            ".method static constructor <clinit>()V",
+            "    .locals 8",
+            "    const/16 v0, 0xc",
+            "    sput-object v0, Lcom/feurstagram/extension/Config;->SURFACE_DEFAULTS:Ljava/util/Map;",
+        ]
+        for key, register in defaults:
+            lines += [
+                f'    const-string v2, "{key}"',
+                f"    filled-new-array {{v2, v{register}}}, [Ljava/lang/String;",
+            ]
+        lines += [
+            "    sget-object v6, Lcom/feurstagram/extension/Config;->SURFACE_DEFAULTS:Ljava/util/Map;",
+            "    return-void",
+            ".end method",
+            ".method public static storedBlocked(Ljava/lang/String;)Z",
+            "    .locals 1",
+            "    return p0",
+            ".end method",
+            ".method private static effective(Ljava/lang/String;)Z",
+            "    .locals 1",
+            "    return p0",
+            ".end method",
+        ]
+        return "\n".join(lines)
+
+    def test_only_ads_stays_blocked_by_default(self) -> None:
+        patched = profile["patch_surface_defaults"](self.sample_config())
+        self.assertIn('.locals 9\n    const-string v8, "false"', patched)
+        self.assertEqual(
+            patched.count("filled-new-array {v2, v8}, [Ljava/lang/String;"), 8
+        )
+        self.assertIn(
+            'const-string v2, "block_ads"\n'
+            '    filled-new-array {v2, v3}, [Ljava/lang/String;',
+            patched,
+        )
+        self.assertIn(
+            'const-string v2, "block_stories"\n'
+            '    filled-new-array {v2, v6}, [Ljava/lang/String;',
+            patched,
+        )
+
+    def test_rejects_changed_upstream_default_or_layout(self) -> None:
+        source = self.sample_config()
+        with self.assertRaises(SystemExit):
+            profile["patch_surface_defaults"](
+                source.replace(
+                    'const-string v2, "block_ads"\n'
+                    '    filled-new-array {v2, v3}',
+                    'const-string v2, "block_ads"\n'
+                    '    filled-new-array {v2, v6}',
+                )
+            )
+        with self.assertRaises(SystemExit):
+            profile["patch_surface_defaults"](
+                source.replace(".locals 8", ".locals 9")
+            )
+
+
 class ManifestCompatibilityTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()

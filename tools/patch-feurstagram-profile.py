@@ -30,18 +30,100 @@ def set_boolean_default(text: str, method: str, old: int, new: int) -> str:
         die(f"{method}: expected one default {old}, found {count}")
     return text[:start] + updated + text[end:]
 
+def patch_surface_defaults(text: str) -> str:
+    """Adapt FeurStagram 456's map-backed surface defaults without disabling ads.
+
+    Its surface blockers now call effective(key), which delegates to a table
+    instead of using per-method getBlocked(key, default) calls. Verify every
+    upstream entry before altering only non-ad defaults.
+    """
+    start, end = method_span(text, "<clinit>")
+    original = text[start:end]
+    expected = [
+        ("block_feed", "3"),
+        ("block_explore", "3"),
+        ("block_reels", "3"),
+        ("block_friends_lane", "3"),
+        ("block_stories", "6"),
+        ("block_instants", "3"),
+        ("block_notes", "3"),
+        ("block_suggested", "3"),
+        ("block_ads", "3"),
+        ("block_comments", "6"),
+        ("block_notifications", "6"),
+        ("block_threads", "3"),
+    ]
+    pattern = (
+        r'const-string v2, "(block_[a-z_]+)"'
+        r'(?:(?!const-string v2,).)*?'
+        r'filled-new-array \{v2, v([36])\}, \[Ljava/lang/String;'
+    )
+    entries = re.findall(pattern, original, flags=re.S)
+    if entries != expected:
+        die(f"SURFACE_DEFAULTS changed: expected {expected!r}, found {entries!r}")
+    if (
+        original.count(".locals 8") != 1
+        or re.search(r"\bv8\b", original)
+        or original.count("SURFACE_DEFAULTS:Ljava/util/Map;") != 2
+        or not re.search(r"const/16 v0, 0xc\b", original)
+        or "storedBlocked(Ljava/lang/String;)Z" not in text
+        or "effective(Ljava/lang/String;)Z" not in text
+    ):
+        die("SURFACE_DEFAULTS structure or register allocation changed")
+    body = original
+    for key, default_register in expected:
+        if default_register != "3" or key == "block_ads":
+            continue
+        marker = f'const-string v2, "{key}"'
+        pos = body.index(marker)
+        next_pos = body.find("const-string v2,", pos + len(marker))
+        if next_pos < 0:
+            next_pos = len(body)
+        chunk = body[pos:next_pos]
+        old = "filled-new-array {v2, v3}, [Ljava/lang/String;"
+        if chunk.count(old) != 1:
+            die(f"SURFACE_DEFAULTS: {key} constructor unexpectedly changed")
+        body = body[:pos] + chunk.replace(
+            old, "filled-new-array {v2, v8}, [Ljava/lang/String;", 1
+        ) + body[next_pos:]
+    body = body.replace(
+        ".locals 8", '.locals 9\n    const-string v8, "false"', 1
+    )
+    if body.count("filled-new-array {v2, v8}, [Ljava/lang/String;") != 8:
+        die("SURFACE_DEFAULTS: non-ad default count changed")
+    return text[:start] + body + text[end:]
+
+
 def replace_method(text: str, name: str, body: str) -> str:
     start, end = method_span(text, name)
     return text[:start] + body.rstrip() + "\n" + text[end:]
 
 def patch_config(path: Path) -> None:
     text = path.read_text()
-    for method in (
-        "isFeedBlocked", "isExploreBlocked", "isReelsBlocked",
-        "isFriendsLaneBlocked", "isInstantsBlocked", "isNotesBlocked",
-        "isSuggestedBlocked", "arePopupsHidden", "isForceSdr",
-        "isAutoUpdateEnabled",
-    ):
+    surface_methods = {
+        "isFeedBlocked": "block_feed",
+        "isExploreBlocked": "block_explore",
+        "isReelsBlocked": "block_reels",
+        "isFriendsLaneBlocked": "block_friends_lane",
+        "isInstantsBlocked": "block_instants",
+        "isNotesBlocked": "block_notes",
+        "isSuggestedBlocked": "block_suggested",
+    }
+    if "SURFACE_DEFAULTS:Ljava/util/Map;" in text:
+        for method, key in surface_methods.items():
+            start, end = method_span(text, method)
+            body = text[start:end]
+            if (
+                f'const-string v0, "{key}"' not in body
+                or body.count("->effective(Ljava/lang/String;)Z") != 1
+                or "->getBlocked(Ljava/lang/String;Z)Z" in body
+            ):
+                die(f"{method}: map-backed surface getter changed")
+        text = patch_surface_defaults(text)
+    else:
+        for method in surface_methods:
+            text = set_boolean_default(text, method, 1, 0)
+    for method in ("arePopupsHidden", "isForceSdr", "isAutoUpdateEnabled"):
         text = set_boolean_default(text, method, 1, 0)
     text = set_boolean_default(text, "isReelsTabShown", 0, 1)
     text = set_boolean_default(text, "isOnboardingDone", 0, 1)
@@ -67,7 +149,18 @@ def patch_config(path: Path) -> None:
     ):
         start, end = method_span(text, method)
         body = text[start:end]
-        if not re.search(
+        if "SURFACE_DEFAULTS:Ljava/util/Map;" in text:
+            key = {
+                "isAdsBlocked": "block_ads",
+                "isStoriesBlocked": "block_stories",
+                "isNotificationsButtonBlocked": "block_notifications",
+            }[method]
+            if (
+                f'const-string v0, "{key}"' not in body
+                or body.count("->effective(Ljava/lang/String;)Z") != 1
+            ):
+                die(f"{method}: map-backed default no longer matches expected {expected}")
+        elif not re.search(
             rf"const/4 v\d+, 0x{expected:x}(?=\s+invoke-static \{{[^}}]+\}}, Lcom/feurstagram/extension/Config;->getBlocked)",
             body,
         ):
