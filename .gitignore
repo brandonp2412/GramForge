@@ -38,3 +38,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# Local Serena language-server and session metadata
+.serena/
