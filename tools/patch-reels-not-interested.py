@@ -216,7 +216,111 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
     return ["organic UFI invokes native Not interested", "Not interested eye-off icon and accessibility label", "ads unchanged"]
 
 
+def patch_456(root: Path, *, check: bool = False) -> list[str]:
+    """Turn organic Instagram 456 Reels More into one-tap Not interested.
+
+    Reuse the native organic More sheet, then press its real Not interested
+    option when the UI appears. This retains Instagram's media-specific
+    handler and avoids dispatching an option against a stale reel.
+    Sponsored media continue to use the original More button.
+    """
+    reels_path = only_path(root, "0FAp")
+    callback_path = only_path(root, "0JcX")
+    reels = reels_path.read_text()
+    callback = callback_path.read_text()
+    if ".class public final LX/0FAp;" not in reels:
+        raise PatchMismatch("456 Reels component changed")
+    owner = only_method(
+        reels,
+        "A0F(LX/0BY7;LX/0FAp;Ljava/lang/Integer;Ljava/lang/String;"
+        "Lkotlin/jvm/functions/Function1;JJZZ)LX/01Vj;",
+    )
+    drawable = """    const v0, 0x7f082848
+
+    if-eqz v2, :cond_6
+
+    const v0, 0x7f082845
+
+    :cond_6"""
+    accessibility = """    const v1, 0x7f135acc
+
+    invoke-static {v7, v1}, LX/01LA;->A0N(LX/0mnw;I)Ljava/lang/String;
+
+    move-result-object v1"""
+    if (
+        owner.count(drawable) != 1
+        or owner.count(accessibility) != 1
+        or owner.count("iget-object v10, v6, LX/0FAp;->A04:LX/0Nfu;") != 1
+        or owner.count("move-result-object v5") != 1
+        or ":gramforge_ad_more" in owner
+    ):
+        raise PatchMismatch("456 Reels More drawable/accessibility contract changed")
+    icon = drawable + """
+    iget-boolean v8, v5, LX/04Dh;->A19:Z
+    if-nez v8, :gramforge_ad_more
+    const v0, 0x7f0825f6
+    :gramforge_ad_more"""
+    accessible = accessibility + """
+    iget-boolean v10, v5, LX/04Dh;->A19:Z
+    if-nez v10, :gramforge_ad_more_label
+    const-string v1, "Not interested"
+    :gramforge_ad_more_label"""
+    native = only_method(
+        callback, "A00(ILjava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
+    )
+    anchor = """    iget-object v0, v2, LX/0FAp;->A04:LX/0Nfu;
+
+    invoke-interface {v0}, LX/0Nfu;->ClC()LX/04Dh;
+
+    move-result-object v2
+
+    invoke-interface {v0}, LX/0Nfu;->ClE()LX/09YX;
+
+    move-result-object v1
+
+    invoke-virtual {p2}, LX/00gM;->A00()Landroid/view/View;
+
+    move-result-object v0
+
+    invoke-virtual {v3, v0, v2, v1}, LX/09CX;->A01(Landroid/view/View;LX/04Dh;LX/09YX;)V"""
+    if (
+        native.count(anchor) != 1
+        or native.count("check-cast v2, LX/0FAp;") != 1
+        or ".locals 13" not in native
+        or not re.search(r"(?m)^\s*:pswitch_11\s*$", native)
+    ):
+        raise PatchMismatch("456 organic Reels More action changed")
+    hook = anchor + """
+    # Only organic Reels automatically select the native Not interested row.
+    iget-boolean v4, v2, LX/04Dh;->A19:Z
+    if-nez v4, :gramforge_original_more
+    invoke-static {v0}, Lcom/gramforge/NotInterestedTapper;->schedule(Landroid/view/View;)V
+    :gramforge_original_more"""
+
+    assets = Path(__file__).resolve().parents[1] / "assets/smali/not-interested"
+    helper_names = ("NotInterestedTapper.smali", "NotInterestedTapper$1.smali")
+    for name in helper_names:
+        helper = assets / name
+        if not helper.is_file() or f"Lcom/gramforge/{name[:-6]};" not in helper.read_text():
+            raise PatchMismatch(f"verified 456 native tap helper missing: {name}")
+        if list(root.glob(f"smali*/com/gramforge/{name}")):
+            raise PatchMismatch(f"native tap helper already present: {name}")
+    target = root / reels_path.relative_to(root).parts[0] / "com/gramforge"
+    if not check:
+        patched_owner = owner.replace(drawable, icon, 1).replace(
+            accessibility, accessible, 1
+        )
+        reels_path.write_text(reels.replace(owner, patched_owner, 1))
+        callback_path.write_text(callback.replace(native, native.replace(anchor, hook, 1), 1))
+        target.mkdir(parents=True, exist_ok=True)
+        for name in helper_names:
+            (target / name).write_bytes((assets / name).read_bytes())
+    return ["one-tap organic Not interested", "eye-off icon and label", "sponsored More unchanged"]
+
+
 def patch(root: Path, *, check: bool = False) -> list[str]:
+    if list(root.glob("smali*/X/0FAp.smali")):
+        return patch_456(root, check=check)
     if list(root.glob("smali*/X/0Bhj.smali")):
         return patch_current(root, check=check)
     reels_path = only_path(root, "09LB")
