@@ -211,5 +211,77 @@ class ReelsActionPatchTests(unittest.TestCase):
             patch(self.root)
 
 
+class Reels456Tests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        owner = self.root / "smali_classes29/X/0FAp.smali"
+        owner.parent.mkdir(parents=True)
+        self.owner = owner
+        entries = [
+            ("A0K", "(LX/0BY7;LX/0Msv;JJZ)LX/0FBB;", "new-instance v1, LX/0FBB;"),
+            ("A0B", "(LX/0BY7;JJ)LX/00iP;", "const v17, 0x7f0b362b"),
+            ("A0L", "(LX/0BY7;JJ)LX/0FBD;", "new-instance v1, LX/0FBD;"),
+            ("A0C", "(LX/0BY7;JJ)LX/00iP;", 'const-string v12, "save_count"\n    const v18, 0x7f0b390b'),
+        ]
+        methods = []
+        for name, descriptor, marker in entries:
+            methods.append(
+                f".method private final {name}{descriptor}\n"
+                ".locals 25\n"
+                f"    {marker}\n"
+                "    const/4 v0, 0x0\n"
+                "    return-object v0\n"
+                ".end method"
+            )
+        calls = []
+        for name, descriptor, _ in entries:
+            calls.extend([
+                f"invoke-direct {{v7}}, LX/0FAp;->{name}{descriptor}",
+                "move-result-object v0",
+                "invoke-virtual {v6, v0}, LX/00jH;->A00(LX/06Rk;)V",
+            ])
+        owner.write_text(
+            '.class public final LX/0FAp;\n'
+            + '\n'.join(methods)
+            + '\n.method public final A0p(LX/00eT;)LX/06Rk;\n'
+            + '    .locals 12\n'
+            + '    const-string v1, "clips_ufi_more_button_component"\n'
+            + '\n'.join('    ' + call for call in calls)
+            + '\n    return-object v6\n.end method\n'
+        )
+        builder = self.root / 'smali_classes13/X/00jH.smali'
+        builder.parent.mkdir(parents=True)
+        builder.write_text(
+            '.class public final LX/00jH;\n'
+            '.method public final A00(LX/06Rk;)V\n'
+            '    .locals 1\n'
+            '    if-eqz p1, :done\n'
+            '    iget-object v0, p0, LX/00jH;->A00:Ljava/util/List;\n'
+            '    invoke-interface {v0, p1}, Ljava/util/List;->add(Ljava/lang/Object;)Z\n'
+            '    :done\n'
+            '    return-void\n'
+            '.end method\n'
+        )
+
+    def test_removes_exactly_four_reels_456_factories(self) -> None:
+        before = self.owner.read_bytes()
+        self.assertEqual(patch(self.root, check=True), ["Save", "Repost", "Save count", "Repost count"])
+        self.assertEqual(before, self.owner.read_bytes())
+        self.assertEqual(patch(self.root), ["Save", "Repost", "Save count", "Repost count"])
+        patched = self.owner.read_text()
+        self.assertEqual(patched.count("return-object v0"), 4)
+        self.assertNotIn("new-instance v1, LX/0FBD;", patched)
+        self.assertNotIn("new-instance v1, LX/0FBB;", patched)
+
+    def test_rejects_renamed_456_repost_count_resource(self) -> None:
+        before = self.owner.read_text().replace('0x7f0b362b', '0x7f0b1234')
+        self.owner.write_text(before)
+        with self.assertRaisesRegex(PatchMismatch, 'Repost count factory changed'):
+            patch(self.root)
+        self.assertEqual(before, self.owner.read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

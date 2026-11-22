@@ -179,9 +179,85 @@ def verify_null_skipping_builder(root: Path, owner: str, append: str, arg: str) 
         raise PatchMismatch("Reels component builder null branch changed")
 
 
+def patch_456(root: Path, *, check: bool = False) -> list[str]:
+    """Remove Reels-only Save/Repost factories in Instagram 456.
+
+    FeurStagram 456 dropped the stable Litho render-name markers used by 454,
+    but still exposes exact Reels UFI component types, resource IDs, and
+    null-skipping list-builder calls. Verify all three before editing.
+    """
+    owners = list(root.glob("smali*/X/0FAp.smali"))
+    if len(owners) != 1:
+        raise PatchMismatch("expected one 456 Reels action owner")
+    path = owners[0]
+    source = path.read_text()
+    if ".class public final LX/0FAp;" not in source or '"clips_ufi_more_button_component"' not in source:
+        raise PatchMismatch("Instagram 456 Reels action rail changed")
+    original = {}
+    signatures = {
+        "Repost": ("A0K", "(LX/0BY7;LX/0Msv;JJZ)LX/0FBB;", "new-instance v1, LX/0FBB;"),
+        "Repost count": ("A0B", "(LX/0BY7;JJ)LX/00iP;", "const v17, 0x7f0b362b"),
+        "Save": ("A0L", "(LX/0BY7;JJ)LX/0FBD;", "new-instance v1, LX/0FBD;"),
+        "Save count": ("A0C", "(LX/0BY7;JJ)LX/00iP;", 'const-string v12, "save_count"'),
+    }
+    for label, (name, descriptor, marker) in signatures.items():
+        blocks = [
+            match.group() for match in METHOD_RE.finditer(source)
+            if match.group().splitlines()[0] == f".method private final {name}{descriptor}"
+        ]
+        if len(blocks) != 1 or blocks[0].count(marker) != 1:
+            raise PatchMismatch(f"Instagram 456 {label} factory changed")
+        original[label] = blocks[0]
+    if "const v18, 0x7f0b390b" not in original["Save count"]:
+        raise PatchMismatch("Instagram 456 Save count resource changed")
+    ufi = [
+        block.group() for block in METHOD_RE.finditer(source)
+        if block.group().splitlines()[0] == ".method public final A0p(LX/00eT;)LX/06Rk;"
+    ]
+    if len(ufi) != 1:
+        raise PatchMismatch("Instagram 456 Reels UFI builder changed")
+    calls = ufi[0]
+    # Both icon/count pairs must be adjacent children of the same Reels builder.
+    # The builder must skip null children; never delete unrelated feed buttons.
+    for left, right in (("Repost", "Repost count"), ("Save", "Save count")):
+        l_name, l_descriptor, _ = signatures[left]
+        r_name, r_descriptor, _ = signatures[right]
+        pattern = (
+            r"invoke-direct(?:/range)? \{[^\n]+\}, LX/0FAp;->"
+            + re.escape(l_name + l_descriptor)
+            + r"\s+move-result-object v\d+"
+            + r"\s+invoke-virtual \{v\d+, v\d+\}, LX/00jH;->A00\(LX/06Rk;\)V"
+            + r"(?:(?!LX/0FAp;->A0[A-Z]\().){0,160}"
+            + r"invoke-direct(?:/range)? \{[^\n]+\}, LX/0FAp;->"
+            + re.escape(r_name + r_descriptor)
+            + r"\s+move-result-object v\d+"
+            + r"\s+invoke-virtual \{v\d+, v\d+\}, LX/00jH;->A00\(LX/06Rk;\)V"
+        )
+        if not re.search(pattern, calls, re.S):
+            raise PatchMismatch(f"Instagram 456 Reels {left}/count placement changed")
+    verify_null_skipping_builder(root, "LX/00jH;", "A00", "LX/06Rk;")
+    if not check:
+        patched = source
+        for label, original_method in original.items():
+            header = original_method.splitlines()[0]
+            replacement = (
+                f"{header}\n"
+                "    .locals 1\n\n"
+                "    const/4 v0, 0x0\n\n"
+                "    return-object v0\n.end method"
+            )
+            if patched.count(original_method) != 1:
+                raise PatchMismatch(f"ambiguous 456 {label} replacement")
+            patched = patched.replace(original_method, replacement, 1)
+        path.write_text(patched)
+    return ["Save", "Repost", "Save count", "Repost count"]
+
+
 def patch(root: Path, *, check: bool = False) -> list[str]:
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK directory not found: {root}")
+    if list(root.glob("smali*/X/0FAp.smali")):
+        return patch_456(root, check=check)
     marked = locate_markers(root)
     ufi_path, ufi_source, ufi_owner = marked["ufi"]
     if marked["save"][2] == marked["repost"][2]:
