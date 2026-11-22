@@ -55,7 +55,16 @@ matrix_send() {
 
 handle_update_failure() {
   local fingerprint previous message payload
-  fingerprint="$(sha256sum "$LOG_FILE" | awk '{print $1}')"
+  # Avoid duplicate alerts for the same incompatibility when APKtool's
+  # temporary paths and timing information change between retry attempts.
+  local errors upstream
+  errors="$(grep '^ERROR:' "$LOG_FILE" || true)"
+  if [[ -n "$errors" ]]; then
+    upstream="$(awk -F= '$1 == "FEUR_TAG" || $1 == "PATCHES_VERSION" || $1 == "CLI_VERSION" { print }' .update-state 2>/dev/null || true)"
+    fingerprint="$(printf '%s\n%s\n' "$upstream" "$errors" | sha256sum | awk '{print $1}')"
+  else
+    fingerprint="$(tail -n 12 "$LOG_FILE" | sha256sum | awk '{print $1}')"
+  fi
   previous="$(cat "$FAILURE_STATE" 2>/dev/null || true)"
   if [[ "$fingerprint" != "$previous" ]]; then
     message="$(tail -n 8 "$LOG_FILE" | head -c 3000)"
