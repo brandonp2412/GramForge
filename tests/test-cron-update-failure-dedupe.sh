@@ -21,6 +21,9 @@ cat >"$tmp_dir/bin/curl" <<'EOF'
 count=0
 [[ -f "$CURL_COUNT_FILE" ]] && count="$(<"$CURL_COUNT_FILE")"
 printf '%s\n' "$((count + 1))" >"$CURL_COUNT_FILE"
+printf '%s\n' "$*" >>"$CURL_ARGS_FILE"
+# First send fails; repeat failure must retry without acknowledging it.
+if [[ "$count" -eq 0 ]]; then exit 22; fi
 exit 0
 EOF
 chmod +x "$tmp_dir/cron-update.sh" "$tmp_dir/update-apps.sh" "$tmp_dir/bin/curl"
@@ -30,20 +33,32 @@ common=(
   MATRIX_ROOM_ID='!room:test'
   MATRIX_ACCESS_TOKEN=test-token
   CURL_COUNT_FILE="$tmp_dir/count"
+  CURL_ARGS_FILE="$tmp_dir/curl-args"
   PATH="$tmp_dir/bin:$PATH"
 )
-for i in 1 2; do
-  if env "${common[@]}" "$tmp_dir/cron-update.sh"; then
-    echo "Unexpected updater success" >&2
-    exit 1
-  fi
-done
-grep -Fxq '1' "$tmp_dir/count"
-fingerprint_before="$(<"$tmp_dir/.cron-failure-state")"
-printf 'FEUR_TAG=v457-0-0-00-00\nPATCHES_VERSION=v2.8.2\nCLI_VERSION=v2.3.0\n' >"$tmp_dir/.update-state"
+if env "${common[@]}" "$tmp_dir/cron-update.sh"; then
+  echo "Unexpected updater success" >&2
+  exit 1
+fi
+[[ ! -s "$tmp_dir/.cron-failure-state" ]]
 if env "${common[@]}" "$tmp_dir/cron-update.sh"; then
   echo "Unexpected updater success" >&2
   exit 1
 fi
 grep -Fxq '2' "$tmp_dir/count"
+grep -Fq 'GramForge patch needs coding work' "$tmp_dir/curl-args"
+grep -Fq 'v456-0-0-53-78' "$tmp_dir/curl-args"
+fingerprint_before="$(<"$tmp_dir/.cron-failure-state")"
+# Same incompatibility should not generate another message.
+if env "${common[@]}" "$tmp_dir/cron-update.sh"; then
+  echo "Unexpected updater success" >&2
+  exit 1
+fi
+grep -Fxq '2' "$tmp_dir/count"
+printf 'FEUR_TAG=v457-0-0-00-00\nPATCHES_VERSION=v2.8.2\nCLI_VERSION=v2.3.0\n' >"$tmp_dir/.update-state"
+if env "${common[@]}" "$tmp_dir/cron-update.sh"; then
+  echo "Unexpected updater success" >&2
+  exit 1
+fi
+grep -Fxq '3' "$tmp_dir/count"
 [[ "$fingerprint_before" != "$(<"$tmp_dir/.cron-failure-state")" ]]

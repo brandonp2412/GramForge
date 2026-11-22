@@ -123,6 +123,20 @@ def make_payload(args: argparse.Namespace) -> dict[str, str]:
     if args.error_log is not None:
         plain = title + "\n\n" + args.error_log
         formatted = f"<h3>🚨 {html.escape(title)}</h3><pre>{html.escape(args.error_log)}</pre>"
+    elif getattr(args, "installed_device", None):
+        # ADB-only installations notify without public publishing or
+        # dependence on remote changelog availability.
+        version = args.version
+        device = args.installed_device
+        plain = f"{title}\n\nInstagram {version} installed on {device}."
+        formatted = (
+            f"<h3>📦 {html.escape(title)}</h3>"
+            f"<p>Instagram <strong>{html.escape(version)}</strong> "
+            f"installed on <strong>{html.escape(device)}</strong>.</p>"
+        )
+        if args.release_tag:
+            plain += f"\nFeurStagram: {args.release_tag}"
+            formatted += f"<p>FeurStagram: {html.escape(args.release_tag)}</p>"
     else:
         changes = upstream_changes(args)
         version = args.version
@@ -161,6 +175,7 @@ def main() -> None:
     parser.add_argument("--patches-tag", default="")
     parser.add_argument("--previous-patches-tag", default="")
     parser.add_argument("--url", default="")
+    parser.add_argument("--installed-device")
     args = parser.parse_args()
     try:
         print(json.dumps(make_payload(args), ensure_ascii=False, separators=(",", ":")))

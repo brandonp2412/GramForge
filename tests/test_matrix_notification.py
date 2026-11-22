@@ -95,6 +95,21 @@ class MatrixNotificationTests(unittest.TestCase):
             with self.assertRaises(notification.ChangelogUnavailable):
                 notification.make_payload(self.options())
 
+    def test_adb_install_notification_is_immediate_and_never_fetches_changelog(self):
+        with patch.object(notification, "fetch_release_range", side_effect=AssertionError("unexpected fetch")):
+            msg = notification.make_payload(self.options(
+                title="GramForge patch installed",
+                installed_device="Samsung <S25>",
+                version="456.0.0.53.78",
+                release_tag="v456-0-0-53-78",
+                url="",
+            ))
+        self.assertIn("GramForge patch installed", msg["body"])
+        self.assertIn("Instagram 456.0.0.53.78 installed on Samsung <S25>.", msg["body"])
+        self.assertIn("FeurStagram: v456-0-0-53-78", msg["body"])
+        self.assertIn("Samsung &lt;S25&gt;", msg["formatted_body"])
+        self.assertNotIn("Download APK", msg["body"])
+
     def test_failed_build_escapes_html_log_without_fetching_notes(self):
         with patch.object(notification, "fetch_release_range", side_effect=AssertionError("unexpected fetch")):
             msg = notification.make_payload(self.options(error_log="error <unsafe> & \"quoted\"", url=""))

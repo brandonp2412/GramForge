@@ -54,7 +54,7 @@ matrix_send() {
 }
 
 handle_update_failure() {
-  local fingerprint previous message payload
+  local kind="${1:-update}" fingerprint previous message payload title target
   # Avoid duplicate alerts for the same incompatibility when APKtool's
   # temporary paths and timing information change between retry attempts.
   local errors upstream
@@ -67,10 +67,21 @@ handle_update_failure() {
   fi
   previous="$(cat "$FAILURE_STATE" 2>/dev/null || true)"
   if [[ "$fingerprint" != "$previous" ]]; then
-    message="$(tail -n 8 "$LOG_FILE" | head -c 3000)"
+    if [[ "$kind" == patch ]]; then
+      title="GramForge patch needs coding work"
+      target="$(awk -F= '$1 == "FEUR_TAG" { print $2 }' .update-state 2>/dev/null || true)"
+      message="FeurStagram ${target:-unknown} could not be patched. Existing installed app unchanged.
+$(grep '^ERROR:' "$LOG_FILE" | tail -n 8 | head -c 2400)"
+    else
+      title="GramForge update needs attention"
+      message="$(tail -n 8 "$LOG_FILE" | head -c 3000)"
+    fi
     if [[ "$matrix_enabled" == true ]]; then
-      payload="$(python3 lib/matrix_notification.py --title "GramForge update needs attention" --error-log "$message")"
-      matrix_send "$payload" || true
+      payload="$(python3 lib/matrix_notification.py --title "$title" --error-log "$message")"
+      if ! matrix_send "$payload"; then
+        printf 'GramForge: Matrix failure alert could not be delivered; will retry.\n' >&2
+        return 1
+      fi
     fi
     printf '%s\n' "$fingerprint" >"$FAILURE_STATE"
   fi
@@ -169,7 +180,7 @@ notified_release_tag="$(awk -F= '$1 == "FEUR_TAG" { print $2 }' "$NOTIFY_METADAT
 notified_patches_tag="$(awk -F= '$1 == "PATCHES_VERSION" { print $2 }' "$NOTIFY_METADATA" 2>/dev/null || true)"
 
 if ! ./update-apps.sh >"$LOG_FILE" 2>&1; then
-  handle_update_failure
+  handle_update_failure patch
   exit 1
 fi
 
@@ -209,9 +220,9 @@ if [[ -n "$adb_serial" ]]; then
   fi
 fi
 
-# ADB-only delivery deliberately does not publish or mark an APK as announced.
-# Matrix remains available to alert on installation failures.
-if [[ "$after" != "$notified" && "$adb_only" != true ]]; then
+# ADB-only delivery never publishes APKs, but still announces new
+# *successfully installed* patched builds on Matrix exactly once.
+if [[ "$after" != "$notified" ]]; then
   download_url=""
   if [[ "$publish_enabled" == true ]]; then
     build_hash="$(sha256sum "$apk" | awk '{print substr($1, 1, 12)}')"
@@ -221,12 +232,19 @@ if [[ "$after" != "$notified" && "$adb_only" != true ]]; then
   fi
 
   if [[ "$matrix_enabled" == true ]]; then
-    payload="$(python3 lib/matrix_notification.py \
-      --title "GramForge APK ready" \
-      --version "$after_version" \
-      --release-tag "$after_release_tag" --previous-release-tag "$notified_release_tag" \
-      --patches-tag "$after_patches_tag" --previous-patches-tag "$notified_patches_tag" \
-      --url "$download_url")"
+    if [[ "$adb_only" == true ]]; then
+      payload="$(python3 lib/matrix_notification.py \
+        --title "GramForge patch installed" \
+        --version "$after_version" --release-tag "$after_release_tag" \
+        --installed-device "$adb_expected_model")"
+    else
+      payload="$(python3 lib/matrix_notification.py \
+        --title "GramForge APK ready" \
+        --version "$after_version" \
+        --release-tag "$after_release_tag" --previous-release-tag "$notified_release_tag" \
+        --patches-tag "$after_patches_tag" --previous-patches-tag "$notified_patches_tag" \
+        --url "$download_url")"
+    fi
     matrix_send "$payload"
   fi
   printf '%s\n' "$after" >"$NOTIFY_STATE"

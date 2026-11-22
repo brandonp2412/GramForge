@@ -50,6 +50,8 @@ EOF
 cat > "$tmp_dir/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 printf 'request\n' >> "$MOCK_MATRIX_CALLS"
+printf '%s\n' "$*" >> "$MOCK_MATRIX_ARGUMENTS"
+[[ ! -e "$MOCK_MATRIX_FAIL" ]] || exit 22
 exit 0
 EOF
 chmod +x "$tmp_dir/bin/adb" "$tmp_dir/bin/curl"
@@ -63,6 +65,8 @@ run_cron() {
     MOCK_ADB_CALLS="$tmp_dir/install-calls" \
     MOCK_ADB_FAIL="$tmp_dir/fail-install" \
     MOCK_MATRIX_CALLS="$tmp_dir/matrix-calls" \
+    MOCK_MATRIX_ARGUMENTS="$tmp_dir/matrix-arguments" \
+    MOCK_MATRIX_FAIL="$tmp_dir/fail-matrix" \
     MOCK_ADB_MODEL="${MOCK_ADB_MODEL:-Mock Android Device}" \
     MATRIX_HOMESERVER=https://matrix.example.test \
     MATRIX_ROOM_ID='!room:example.test' \
@@ -101,10 +105,27 @@ fi
 [[ "$(wc -l < "$tmp_dir/matrix-calls")" -eq 1 ]]
 
 rm "$tmp_dir/fail-install"
-run_cron
+touch "$tmp_dir/fail-matrix"
+# The install can succeed even if Matrix is temporarily unavailable.
+# The notification must be retried without installing the same APK twice.
+if run_cron; then
+  echo 'Expected Matrix notification failure' >&2
+  exit 1
+fi
 [[ "$(wc -l < "$tmp_dir/install-calls")" -eq 3 ]]
 [[ "$(< "$tmp_dir/.cron-adb-install-state")" != "$first_state" ]]
-[[ "$(wc -l < "$tmp_dir/matrix-calls")" -eq 1 ]]
+[[ "$(wc -l < "$tmp_dir/matrix-calls")" -eq 2 ]]
+[[ "$(< "$tmp_dir/.cron-notify-state")" != "$(sha256sum "$tmp_dir/apk/instagram-patched-1.0.apk" | awk '{print $1}')" ]]
+rm "$tmp_dir/fail-matrix"
+run_cron
+[[ "$(wc -l < "$tmp_dir/install-calls")" -eq 3 ]]
+[[ "$(wc -l < "$tmp_dir/matrix-calls")" -eq 3 ]]
+grep -Fq 'GramForge patch installed' "$tmp_dir/matrix-arguments"
+grep -Fq 'Instagram 1.0 installed on Mock Android Device' "$tmp_dir/matrix-arguments"
+[[ "$(< "$tmp_dir/.cron-notify-state")" == payload-v1:* ]]
+run_cron
+[[ "$(wc -l < "$tmp_dir/install-calls")" -eq 3 ]]
+[[ "$(wc -l < "$tmp_dir/matrix-calls")" -eq 3 ]]
 
 # Even with a configured serial, refuse a different model before install.
 python3 - "$tmp_dir/apk/instagram-patched-1.0.apk" three <<'PY'
