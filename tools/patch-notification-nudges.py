@@ -330,7 +330,178 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
     ]
 
 
+def patch_456(root: Path, *, check: bool = False) -> list[str]:
+    """Target only Instagram 456 notification solicitation, not push delivery."""
+    def replace(name, signature, markers, body):
+        path = only_path(root, name + ".smali")
+        return path, replace_method(path.read_text(), signature, markers, body)
+
+    feed_path, feed = replace(
+        "0D9I",
+        "A00(Landroid/content/Context;Lcom/instagram/common/session/UserSession;Ljava/lang/String;)Z",
+        ("preference_has_allowed_push_system_dialog", "notification_feed", "direct_inbox"),
+        FEED_UPSELL_DISABLED,
+    )
+    delayed_path, delayed = replace(
+        "0D9t",
+        "A00(Landroid/app/Activity;Landroid/view/View;Lcom/instagram/common/session/UserSession;Ljava/lang/Integer;)V",
+        ("notification_feed", "direct_inbox", "LX/0a21;"),
+        ".method public static final A00(Landroid/app/Activity;Landroid/view/View;Lcom/instagram/common/session/UserSession;Ljava/lang/Integer;)V\n"
+        "    .locals 0\n    return-void\n.end method",
+    )
+    onboarding_path, onboarding = replace(
+        "0SQp", "A01()Z",
+        ("skip_push_opt_in_already_asked", "skip_push_opt_in_os_version_too_low"),
+        ".method public final A01()Z\n    .locals 1\n"
+        "    const/4 v0, 0x0\n    return v0\n.end method",
+    )
+    quick_path = only_path(root, "02Ah.smali")
+    qp = quick_path.read_text()
+    signature = (
+        "HDX(Landroid/content/Context;LX/0M0b;"
+        "Lcom/instagram/common/session/UserSession;LX/0Nei;"
+        "LX/0mra;Lcom/instagram/quickpromotion/intf/QuickPromotionSlot;"
+        "Ljava/util/List;)V"
+    )
+    candidates = [m.group() for m in METHOD_RE.finditer(qp)
+                  if m.group().splitlines()[0].endswith(signature)]
+    if len(candidates) != 1:
+        raise PatchMismatch("456 Quick Promotion controller changed")
+    method = candidates[0]
+    anchor = (
+        '    const-string/jumbo v0, "notification_permission_prompt"\n\n'
+        '    invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n'
+        '    move-result v0\n\n'
+        '    if-eqz v0, :cond_30'
+    )
+    if method.count(anchor) != 1 or ":goto_14" not in method or "LX/0VPY;->A00(" not in method:
+        raise PatchMismatch("456 notification Quick Promotion changed")
+    # Skip the identified notification-prompt branch only. Other promotions
+    # still use their native eligibility and rendering.
+    qp = qp.replace(method, method.replace(anchor, anchor + "\n\n    goto/16 :goto_14", 1), 1)
+
+    thread_path = only_path(root, "06MC.smali")
+    thread = thread_path.read_text()
+    signature = "A00(Lcom/instagram/common/session/UserSession;LX/05Ks;LX/0LcA;LX/06MC;)V"
+    candidates = [m.group() for m in METHOD_RE.finditer(thread)
+                  if m.group().splitlines()[0].endswith(signature)]
+    if len(candidates) != 1:
+        raise PatchMismatch("456 Direct-thread banner changed")
+    method = candidates[0]
+    anchor = (
+        "    invoke-interface {v4}, LX/0avn;->B2x()Z\n\n"
+        "    move-result v0\n\n"
+        "    if-eqz v0, :cond_1"
+    )
+    if (
+        method.count(anchor) != 1
+        or "nf_reachability_upsell_limits_direct_thread" not in method
+        or "Landroid/view/ViewStub;->inflate()Landroid/view/View;" not in method
+    ):
+        raise PatchMismatch("456 Direct-thread notification banner changed")
+    thread = thread.replace(method, method.replace(
+        anchor, "    goto/16 :cond_1", 1), 1)
+    # Instagram 456 renders the empty Direct-inbox notification pitch in a
+    # Compose component, so native TextView hiding alone cannot suppress it.
+    empty_path = only_path(root, "0tng.smali")
+    empty_source = empty_path.read_text()
+    empty_signature = "A03(LX/1Ghm;LX/01Lt;I)V"
+    matches = [m.group() for m in METHOD_RE.finditer(empty_source)
+               if m.group().splitlines()[0] == ".method public static final " + empty_signature]
+    if len(matches) != 1:
+        raise PatchMismatch("456 Direct empty-state Compose renderer changed")
+    empty = matches[0]
+    body_anchor = (
+        "    move-result-object v19\n\n"
+        "    const/16 v18, 0x0"
+    )
+    button_anchor = (
+        "    invoke-static {v3, v7, v5, v4, v8}, LX/0WY9;->A0L("
+        "LX/1Ghm;LX/1GAM;Ljava/lang/Integer;Ljava/lang/String;"
+        "Lkotlin/jvm/functions/Function0;)V"
+    )
+    if (
+        empty.count(body_anchor) != 1
+        or empty.count(button_anchor) != 1
+        or empty.count("const v0, 0x7f13312a") != 1
+        or empty.count("const v4, 0x7f133127") != 1
+        or empty.count("move-result-object v26") != 2
+        or ".locals 42" not in empty
+    ):
+        raise PatchMismatch("456 Direct empty-state notification prompt changed")
+    # Use a spare register before its later initialization; exact-match the
+    # notification pitch so ordinary empty-state copy stays intact.
+    filtered_body = (
+        "    move-result-object v19\n\n"
+        "    invoke-static/range {v26 .. v26}, Lcom/gramforge/DirectNudgePredicate;->isNudgeBody(Ljava/lang/String;)Z\n"
+        "    move-result v40\n"
+        "    if-eqz v40, :gramforge_keep_direct_copy\n"
+        "    const-string v26, \"\"\n"
+        "    const/16 v19, 0x0\n"
+        "    :gramforge_keep_direct_copy\n\n"
+        "    const/16 v18, 0x0"
+    )
+    guarded_button = (
+        "    if-eqz v19, :gramforge_skip_direct_nudge_button\n"
+        + button_anchor
+        + "\n    :gramforge_skip_direct_nudge_button"
+    )
+    updated_empty = empty.replace(body_anchor, filtered_body, 1).replace(
+        button_anchor, guarded_button, 1
+    )
+    nudge_helper = root / "smali/com/gramforge/DirectNudgePredicate.smali"
+    if nudge_helper.is_file():
+        raise PatchMismatch("456 Direct Compose nudge predicate already installed")
+    # 456's native upsell banner is shared by Direct and activity; both are
+    # notifications-only prompts, so hide its root without removing feeds.
+    banner_path = only_path(root, "0D9H.smali")
+    banner_source = banner_path.read_text()
+    banner_signature = (
+        "A00(Landroid/content/Context;Landroid/view/LayoutInflater;"
+        "Landroid/view/View;Lcom/instagram/common/session/UserSession;"
+        "LX/0avn;Z)Landroid/view/ViewGroup;"
+    )
+    matches = [m.group() for m in METHOD_RE.finditer(banner_source)
+               if m.group().splitlines()[0] == ".method public static final " + banner_signature]
+    if len(matches) != 1:
+        raise PatchMismatch("456 notification upsell banner factory changed")
+    banner_method = matches[0]
+    if (
+        banner_method.count("    return-object v7") != 1
+        or banner_method.count("const v0, 0x7f0b45b0") != 1
+        or banner_method.count("const v0, 0x7f0e103f") != 1
+    ):
+        raise PatchMismatch("456 notification banner visibility contract changed")
+    banner = banner_source.replace(
+        banner_method,
+        banner_method.replace(
+            "    return-object v7",
+            "    const/16 v1, 0x8\n"
+            "    invoke-virtual {v7, v1}, Landroid/view/View;->setVisibility(I)V\n\n"
+            "    return-object v7",
+            1
+        ), 1
+    )
+    updates = {
+        feed_path: feed, delayed_path: delayed, onboarding_path: onboarding,
+        quick_path: qp, thread_path: thread,
+        empty_path: empty_source.replace(empty, updated_empty, 1),
+        banner_path: banner, nudge_helper: CURRENT_DIRECT_NUDGE_PREDICATE,
+    }
+    if not check:
+        for path, content in updates.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+    return [
+        "feed/Direct permission nudges", "delayed permission dialogs",
+        "onboarding push opt-in", "notification Quick Promotion",
+        "Direct-thread notification banner",
+    ]
+
+
 def patch(root: Path, *, check: bool = False) -> list[str]:
+    if list(root.glob("smali*/X/0D9I.smali")) and list(root.glob("smali*/X/0SQp.smali")):
+        return patch_456(root, check=check)
     # Obfuscated class names are reused between Instagram builds. Detect the
     # current variant by its notification-specific markers, not the filename.
     current_feed = list(root.glob("smali*/X/02EI.smali"))

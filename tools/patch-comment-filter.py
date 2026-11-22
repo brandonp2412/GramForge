@@ -250,9 +250,239 @@ def locate_row(root: Path) -> Path:
     return matches[0]
 
 
+COMMENT_VIEW_FILTER_SMALI = """.class public final Lcom/gramforge/CommentViewFilter;
+.super Ljava/lang/Object;
+.implements Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;
+
+.field private static final installed:Ljava/util/WeakHashMap;
+
+.field private final root:Landroid/view/View;
+
+.method static constructor <clinit>()V
+    .locals 1
+    new-instance v0, Ljava/util/WeakHashMap;
+    invoke-direct {v0}, Ljava/util/WeakHashMap;-><init>()V
+    sput-object v0, Lcom/gramforge/CommentViewFilter;->installed:Ljava/util/WeakHashMap;
+    return-void
+.end method
+
+.method private constructor <init>(Landroid/view/View;)V
+    .locals 0
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+    iput-object p1, p0, Lcom/gramforge/CommentViewFilter;->root:Landroid/view/View;
+    return-void
+.end method
+
+.method public static install(Landroid/view/View;)V
+    .locals 4
+    if-eqz p0, :done
+    sget-object v0, Lcom/gramforge/CommentViewFilter;->installed:Ljava/util/WeakHashMap;
+    invoke-virtual {v0, p0}, Ljava/util/WeakHashMap;->containsKey(Ljava/lang/Object;)Z
+    move-result v1
+    if-nez v1, :done
+    sget-object v1, Ljava/lang/Boolean;->TRUE:Ljava/lang/Boolean;
+    invoke-virtual {v0, p0, v1}, Ljava/util/WeakHashMap;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+
+    new-instance v2, Lcom/gramforge/CommentViewFilter;
+    invoke-direct {v2, p0}, Lcom/gramforge/CommentViewFilter;-><init>(Landroid/view/View;)V
+
+    invoke-virtual {p0}, Landroid/view/View;->getViewTreeObserver()Landroid/view/ViewTreeObserver;
+    move-result-object v3
+    invoke-virtual {v3, v2}, Landroid/view/ViewTreeObserver;->addOnGlobalLayoutListener(Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;)V
+
+    invoke-static {p0}, Lcom/gramforge/CommentViewFilter;->filter(Landroid/view/View;)V
+    :done
+    return-void
+.end method
+
+.method public onGlobalLayout()V
+    .locals 1
+    iget-object v0, p0, Lcom/gramforge/CommentViewFilter;->root:Landroid/view/View;
+    invoke-static {v0}, Lcom/gramforge/CommentViewFilter;->filter(Landroid/view/View;)V
+    return-void
+.end method
+
+.method private static filter(Landroid/view/View;)V
+    .locals 7
+    if-eqz p0, :done
+    const v0, 0x7f0b3e69
+    invoke-virtual {p0, v0}, Landroid/view/View;->findViewById(I)Landroid/view/View;
+    move-result-object v0
+    instance-of v1, v0, Landroidx/recyclerview/widget/RecyclerView;
+    if-eqz v1, :done
+    check-cast v0, Landroid/view/ViewGroup;
+
+    invoke-virtual {v0}, Landroid/view/ViewGroup;->getChildCount()I
+    move-result v1
+    const/4 v2, 0x0
+    :loop
+    if-ge v2, v1, :done
+    invoke-virtual {v0, v2}, Landroid/view/ViewGroup;->getChildAt(I)Landroid/view/View;
+    move-result-object v3
+    invoke-static {v3}, Lcom/gramforge/CommentViewFilter;->isSpamRow(Landroid/view/View;)Z
+    move-result v4
+    if-eqz v4, :keep
+    const/16 v5, 0x8
+    invoke-virtual {v3, v5}, Landroid/view/View;->setVisibility(I)V
+    goto :next
+    :keep
+    invoke-virtual {v3}, Landroid/view/View;->getVisibility()I
+    move-result v5
+    const/16 v6, 0x8
+    if-ne v5, v6, :next
+    const/4 v5, 0x0
+    invoke-virtual {v3, v5}, Landroid/view/View;->setVisibility(I)V
+    :next
+    add-int/lit8 v2, v2, 0x1
+    goto :loop
+    :done
+    return-void
+.end method
+
+.method private static isSpamRow(Landroid/view/View;)Z
+    .locals 7
+    if-eqz p0, :visible
+    invoke-virtual {p0}, Landroid/view/View;->getContentDescription()Ljava/lang/CharSequence;
+    move-result-object v0
+    if-eqz v0, :children
+    invoke-virtual {v0}, Ljava/lang/Object;->toString()Ljava/lang/String;
+    move-result-object v0
+    const-string v1, " said "
+    invoke-virtual {v0, v1}, Ljava/lang/String;->indexOf(Ljava/lang/String;)I
+    move-result v2
+    if-ltz v2, :children
+    add-int/lit8 v2, v2, 0x6
+    invoke-virtual {v0, v2}, Ljava/lang/String;->substring(I)Ljava/lang/String;
+    move-result-object v0
+    invoke-static {v0}, Lcom/gramforge/CommentFilter;->shouldHide(Ljava/lang/String;)Z
+    move-result v0
+    return v0
+
+    :children
+    instance-of v0, p0, Landroid/view/ViewGroup;
+    if-eqz v0, :visible
+    move-object v0, p0
+    check-cast v0, Landroid/view/ViewGroup;
+    invoke-virtual {v0}, Landroid/view/ViewGroup;->getChildCount()I
+    move-result v1
+    const/4 v2, 0x0
+    :loop
+    if-ge v2, v1, :visible
+    invoke-virtual {v0, v2}, Landroid/view/ViewGroup;->getChildAt(I)Landroid/view/View;
+    move-result-object v3
+    invoke-static {v3}, Lcom/gramforge/CommentViewFilter;->isSpamRow(Landroid/view/View;)Z
+    move-result v4
+    if-eqz v4, :next
+    const/4 v0, 0x1
+    return v0
+    :next
+    add-int/lit8 v2, v2, 0x1
+    goto :loop
+
+    :visible
+    const/4 v0, 0x0
+    return v0
+.end method
+"""
+
+
+def patch_456(root: Path, *, check: bool = False) -> list[str]:
+    """Filter Instagram 456's Compose CommentRow before entering composition."""
+    files = list(root.glob("smali*/X/035r.smali"))
+    if len(files) != 1:
+        raise PatchMismatch("Instagram 456 comment-row owner changed")
+    path = files[0]
+    source = path.read_text()
+    signature = (
+        ".method public static final A00(LX/1Ghm;LX/06DP;LX/062s;"
+        "LX/03U8;LX/0mry;LX/035o;IIZZZZZ)V"
+    )
+    methods = [
+        match.group() for match in METHOD_RE.finditer(source)
+        if match.group().splitlines()[0] == signature
+    ]
+    if len(methods) != 1:
+        raise PatchMismatch("Instagram 456 Compose CommentRow signature changed")
+    method = methods[0]
+    anchor = (
+        "    move-object/from16 v5, p2\n\n"
+        "    invoke-static {v5, v9}, LX/014D;->A0b(Ljava/lang/Object;I)V\n\n"
+        "    const/4 v15, 0x1"
+    )
+    field = "LX/062s;->A0T:Ljava/lang/String;"
+    if (
+        method.count(anchor) != 1
+        or method.count("iget-object v4, v5, " + field) != 1
+        or ".locals 55" not in method
+        or "invoke-interface {v0, v1}, LX/1Ghm;->Hv8(I)V" not in method
+        or "gramforge_comment_visible" in source
+    ):
+        raise PatchMismatch("Instagram 456 CommentRow model/body changed")
+    helper = root / path.relative_to(root).parts[0] / "com/gramforge/CommentFilter.smali"
+    if helper.is_file() or list(root.glob("smali*/com/gramforge/CommentFilter.smali")):
+        raise PatchMismatch("Instagram 456 comment filter already applied")
+    hook = (
+        "    move-object/from16 v5, p2\n\n"
+        "    invoke-static {v5, v9}, LX/014D;->A0b(Ljava/lang/Object;I)V\n\n"
+        "    iget-object v0, v5, " + field + "\n\n"
+        "    invoke-static {v0}, " + RUNTIME_CLASS + "->shouldHide(Ljava/lang/String;)Z\n\n"
+        "    move-result v0\n\n"
+        "    if-eqz v0, :gramforge_comment_visible\n\n"
+        "    return-void\n\n"
+        "    :gramforge_comment_visible\n\n"
+        "    const/4 v15, 0x1"
+    )
+    # Reels' comment bottom sheet is a legacy RecyclerView on 456, not the
+    # Compose CommentRow above. Filter visible comment cells by their own
+    # accessibility-described text, preserving composer, likes and navigation.
+    sheet_files = list(root.glob("smali*/X/073s.smali"))
+    if len(sheet_files) != 1:
+        raise PatchMismatch("456 comment bottom sheet fragment moved")
+    sheet_path = sheet_files[0]
+    sheet = sheet_path.read_text()
+    if '__redex_internal_original_name:Ljava/lang/String; = "CommentListBottomsheetFragment"' not in sheet:
+        raise PatchMismatch("456 comment bottom sheet identity changed")
+    sheet_methods = [m.group() for m in METHOD_RE.finditer(sheet)
+                     if m.group().splitlines()[0] ==
+                     ".method public final onViewCreated(Landroid/view/View;Landroid/os/Bundle;)V"]
+    if len(sheet_methods) != 1:
+        raise PatchMismatch("456 comment bottom sheet lifecycle changed")
+    old_sheet_method = sheet_methods[0]
+    sheet_anchor = (
+        "    invoke-super {v0, v2, v1}, LX/0LZs;->onViewCreated(Landroid/view/View;Landroid/os/Bundle;)V\n\n"
+        "    return-void"
+    )
+    if (
+        old_sheet_method.count(sheet_anchor) != 1
+        or "const v0, 0x7f0b2581" not in old_sheet_method
+        or "const v3, 0x7f0b0dac" not in old_sheet_method
+        or ".locals 56" not in old_sheet_method
+        or "CommentViewFilter;->install" in old_sheet_method
+    ):
+        raise PatchMismatch("456 comment bottom sheet view hierarchy changed")
+    view_filter = root / "smali/com/gramforge/CommentViewFilter.smali"
+    if view_filter.exists() or list(root.glob("smali*/com/gramforge/CommentViewFilter.smali")):
+        raise PatchMismatch("456 comment view filter already present")
+    sheet_hook = sheet_anchor.replace(
+        "    return-void",
+        "    invoke-static/range {p1 .. p1}, Lcom/gramforge/CommentViewFilter;->install(Landroid/view/View;)V\n\n"
+        "    return-void",
+    )
+    if not check:
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.write_text(runtime_smali())
+        path.write_text(source.replace(method, method.replace(anchor, hook, 1), 1))
+        sheet_path.write_text(sheet.replace(old_sheet_method, old_sheet_method.replace(sheet_anchor, sheet_hook, 1), 1))
+        view_filter.parent.mkdir(parents=True, exist_ok=True)
+        view_filter.write_text(COMMENT_VIEW_FILTER_SMALI)
+    return ["spam templates", "generic reactions", "formulaic comments", "Reels RecyclerView"]
+
+
 def patch(root: Path, *, check: bool = False) -> list[str]:
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK directory not found: {root}")
+    if list(root.glob("smali*/X/035r.smali")):
+        return patch_456(root, check=check)
     path = locate_row(root)
     source = path.read_text()
     matches = [match for match in METHOD_RE.finditer(source) if MARKER in match.group()]

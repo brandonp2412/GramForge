@@ -516,9 +516,70 @@ def transform_current_controller(source: str) -> str:
     return source[:match.start()] + updated + source[match.end():]
 
 
+def patch_456(root: Path, *, check: bool = False) -> Path:
+    """Suppress the Instagram 456 Direct Requests header action, not Messages."""
+    controller_paths = list(root.glob("smali*/X/018J.smali"))
+    compose_paths = list(root.glob("smali*/X/0PER.smali"))
+    if len(controller_paths) != 1 or len(compose_paths) != 1:
+        raise PatchMismatch("456 Direct inbox fragment/header changed")
+    controller_path, compose_path = controller_paths[0], compose_paths[0]
+    controller, compose = controller_path.read_text(), compose_path.read_text()
+    if '__redex_internal_original_name:Ljava/lang/String; = "DirectInboxFragment"' not in controller:
+        raise PatchMismatch("456 DirectInboxFragment identity changed")
+    generic = re.compile(r"(?ms)^\.method [^\n]+\n.*?^\.end method$")
+    view_blocks = [
+        m.group() for m in generic.finditer(controller)
+        if m.group().splitlines()[0].startswith(".method public final onCreateView(")
+    ]
+    if len(view_blocks) != 1:
+        raise PatchMismatch("456 Direct inbox root method changed")
+    view = view_blocks[0]
+    if (
+        view.count("    return-object v2") != 1
+        or view.count("iget-object v2, v4, LX/018J;->A0S:") != 1
+        or "DirectRequestsHeaderFilter;->install(" in view
+    ):
+        raise PatchMismatch("456 Direct inbox root contract changed")
+    hook = (
+        "    invoke-static {v2}, Lcom/gramforge/DirectRequestsHeaderFilter;->install(Landroid/view/View;)V\n\n"
+        "    return-object v2"
+    )
+    changes = [
+        (".method public static final A01(LX/1Ghm;LX/0PD8;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;I)V",
+         "    invoke-static/range {v9 .. v14}, LX/04qZ;->A1e(LX/1Ghm;LX/06DP;LX/04pY;Ljava/lang/String;J)V",
+         "LX/0PD8;->A02:Ljava/lang/String;"),
+        (".method public static final A03(LX/1Ghm;LX/0PD8;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;I)V",
+         "    invoke-static/range {v8 .. v14}, LX/04qZ;->A0g(LX/1Ghm;LX/06DP;LX/04pY;LX/04pQ;Ljava/lang/String;J)V",
+         'const-string v5, "header_action_button"'),
+    ]
+    updated = compose
+    for header, action, marker in changes:
+        methods = [m.group() for m in generic.finditer(updated)
+                   if m.group().splitlines()[0] == header]
+        if len(methods) != 1:
+            raise PatchMismatch("456 Direct Compose header signature changed")
+        old = methods[0]
+        if old.count(action) != 1 or marker not in old or old.count('"header_action_button"') != 1:
+            raise PatchMismatch("456 Direct Requests action changed")
+        # Remove the rendered header button, retaining the Messages title and
+        # the surrounding Compose scopes (which must remain balanced).
+        updated = updated.replace(old, old.replace(action, "    # gramforge: Requests header action hidden", 1), 1)
+    helper = root / controller_path.relative_to(root).parts[0] / "com/gramforge/DirectRequestsHeaderFilter.smali"
+    if helper.exists() or list(root.glob("smali*/com/gramforge/DirectRequestsHeaderFilter.smali")):
+        raise PatchMismatch("456 Direct inbox header helper already installed")
+    if not check:
+        controller_path.write_text(controller.replace(view, view.replace("    return-object v2", hook, 1), 1))
+        compose_path.write_text(updated)
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.write_text(CURRENT_DIRECT_HEADER_FILTER_SMALI)
+    return controller_path
+
+
 def patch(root: Path, *, check: bool = False) -> Path:
     if not root.is_dir():
         raise PatchMismatch(f"decoded APK missing: {root}")
+    if list(root.glob("smali*/X/018J.smali")):
+        return patch_456(root, check=check)
     current_files = list(root.rglob("02CE.smali"))
     current = (
         len(current_files) == 1

@@ -91,6 +91,53 @@ class CommentFilterTest(unittest.TestCase):
         self.assertEqual(helper.count("Ljava/util/regex/Pattern;->compile"), len(PATCH["PATTERNS"]))
         self.assertEqual(helper.count("Ljava/util/regex/Matcher;->find"), len(PATCH["PATTERNS"]))
 
+
+    def test_instagram_456_native_reels_comment_rows(self) -> None:
+        row = self.root / "smali_classes31/X/035r.smali"
+        sheet = self.root / "smali_classes31/X/073s.smali"
+        row.parent.mkdir(parents=True, exist_ok=True)
+        row.write_text("""
+.class public final LX/035r;
+.super Ljava/lang/Object;
+.method public static final A00(LX/1Ghm;LX/06DP;LX/062s;LX/03U8;LX/0mry;LX/035o;IIZZZZZ)V
+    .locals 55
+    move-object v0, p0
+    invoke-interface {v0, v1}, LX/1Ghm;->Hv8(I)V
+    move-object/from16 v5, p2
+
+    invoke-static {v5, v9}, LX/014D;->A0b(Ljava/lang/Object;I)V
+
+    const/4 v15, 0x1
+    iget-object v4, v5, LX/062s;->A0T:Ljava/lang/String;
+    return-void
+.end method
+""")
+        sheet.write_text("""
+.class public final LX/073s;
+.super LX/0LZs;
+.field public static final __redex_internal_original_name:Ljava/lang/String; = "CommentListBottomsheetFragment"
+.method public final onViewCreated(Landroid/view/View;Landroid/os/Bundle;)V
+    .locals 56
+    const v0, 0x7f0b2581
+    const v3, 0x7f0b0dac
+    invoke-super {v0, v2, v1}, LX/0LZs;->onViewCreated(Landroid/view/View;Landroid/os/Bundle;)V
+
+    return-void
+.end method
+""")
+        self.assertEqual(len(PATCH["patch"](self.root, check=True)), 4)
+        self.assertFalse((self.root / "smali/com/gramforge/CommentViewFilter.smali").exists())
+        labels = PATCH["patch"](self.root)
+        self.assertIn("Reels RecyclerView", labels)
+        self.assertIn("Lcom/gramforge/CommentViewFilter;->install(Landroid/view/View;)V",
+                      sheet.read_text())
+        helper = (self.root / "smali/com/gramforge/CommentViewFilter.smali").read_text()
+        self.assertIn("0x7f0b3e69", helper)
+        self.assertIn('const-string v1, " said "', helper)
+        self.assertIn("Lcom/gramforge/CommentFilter;->shouldHide", helper)
+        self.assertIn("ViewTreeObserver$OnGlobalLayoutListener", helper)
+        self.assertIn("Lcom/gramforge/CommentFilter;->shouldHide", row.read_text())
+
     def test_formulaic_comments_are_hidden(self) -> None:
         matching = [
             "why do i get a warning when i follow your page?",
