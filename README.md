@@ -30,4 +30,4 @@ For private ADB delivery, set `GRAMFORGE_ADB_SERIAL`, `GRAMFORGE_ADB_EXPECTED_MO
 
 Keep keys, tokens, device identifiers, and host-specific settings in the local configuration—never in Git.
 
-GramForge downloads [instagram-patches](https://github.com/brandonp2412/instagram-patches/releases/latest) separately from the navigation bundle. Follow recommendations are patched by that released Morphe bundle. Notification suppression remains local for Instagram 456 until the external notification patch supports that version.
+GramForge downloads [instagram-patches](https://github.com/brandonp2412/instagram-patches/releases/latest) separately from the navigation bundle. Both follow recommendations and notification prompt suppression are applied by that released Morphe bundle.

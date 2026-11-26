@@ -14,10 +14,9 @@ cp -r "$repo_dir/assets/rotta-launcher" "$tmp_dir/assets/rotta-launcher"
 cp "$repo_dir/tools/patch-launcher-icon.py" "$tmp_dir/tools/patch-launcher-icon.py"
 cp "$repo_dir/tools/patch-reels-actions.py" "$tmp_dir/tools/patch-reels-actions.py"
 cp "$repo_dir/tools/patch-reels-not-interested.py" "$tmp_dir/tools/patch-reels-not-interested.py"
-cp "$repo_dir/tools/patch-notification-nudges.py" "$tmp_dir/tools/patch-notification-nudges.py"
 cp "$repo_dir/tools/patch-comment-filter.py" "$tmp_dir/tools/patch-comment-filter.py"
 cp "$repo_dir/tools/patch-message-requests-link.py" "$tmp_dir/tools/patch-message-requests-link.py"
-reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" "$repo_dir/tools/patch-reels-not-interested.py" "$repo_dir/tools/patch-notification-nudges.py" "$repo_dir/tools/patch-comment-filter.py" "$repo_dir/tools/patch-message-requests-link.py" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
+reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" "$repo_dir/tools/patch-reels-not-interested.py" "$repo_dir/tools/patch-comment-filter.py" "$repo_dir/tools/patch-message-requests-link.py" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
 icon_hash="$(python3 "$repo_dir/tools/patch-launcher-icon.py" --fingerprint "$repo_dir/assets/rotta-launcher")"
 chmod +x "$tmp_dir/update-apps.sh" "$tmp_dir/tools/ensure-apktool.sh"
 printf bundle > "$tmp_dir/patches/gramforge.mpp"
@@ -88,7 +87,7 @@ if [[ "$args" == *"morphe-cli.jar patch"* ]]; then
   done
   : > "$output"
   cat > "$report" <<JSON
-{"packageName":"com.instagram.android","packageVersion":"456.0.0.53.78","patchingSteps":[{"step":"PATCHING","success":true},{"step":"REBUILDING","success":true},{"step":"SIGNING","success":true}],"appliedPatches":[{"name":"Hide navigation buttons","options":[]},{"name":"Hide follow recommendations","options":[]}],"failedPatches":[]}
+{"packageName":"com.instagram.android","packageVersion":"456.0.0.53.78","patchingSteps":[{"step":"PATCHING","success":true},{"step":"REBUILDING","success":true},{"step":"SIGNING","success":true}],"appliedPatches":[{"name":"Hide navigation buttons","options":[]},{"name":"Hide follow recommendations","options":[]},{"name":"Hide notification prompts","options":[]}],"failedPatches":[]}
 JSON
   exit 0
 fi
@@ -96,14 +95,14 @@ exit 0
 EOF
 chmod +x "$tmp_dir/bin/java"
 
-PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOTIFICATION_PATCHER="$tmp_dir/reels.py" GRAMFORGE_COMMENT_PATCHER="$tmp_dir/reels.py" GRAMFORGE_REQUESTS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_COMMENT_PATCHER="$tmp_dir/reels.py" GRAMFORGE_REQUESTS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 
 patch_args="$(<"$tmp_dir/patch-args")"
 grep -Eq 'fake-apktool\.jar d .* -p apk/\.gramforge-456\.0\.0\.53\.78\.[^ ]+/framework ' "$tmp_dir/apktool-args"
 grep -Eq 'fake-apktool\.jar b -p apk/\.gramforge-456\.0\.0\.53\.78\.[^ ]+/framework ' "$tmp_dir/apktool-args"
 [[ "$patch_args" != *'-e Hide ads'* ]]
 [[ "$patch_args" == *'-e Hide navigation buttons'* ]]
-[[ "$patch_args" == *'-p patches/gramforge.mpp -e Hide follow recommendations'* ]]
+[[ "$patch_args" == *'-p patches/gramforge.mpp -e Hide follow recommendations -e Hide notification prompts'* ]]
 [[ "$patch_args" == *'-O hideHome=true'* ]]
 [[ "$patch_args" == *'-O hideReels=false'* ]]
 [[ "$patch_args" == *'-O hideDirect=false'* ]]
@@ -118,13 +117,13 @@ grep -Fqx "INSTAGRAM_PATCH_PROFILE=feur-v456-0-0-53-78-brosssh-v2.8.2-custom-v1.
 test -f "$tmp_dir/.tools/feurstagram/gramforge-v456-0-0-53-78-profile-v5-home-true-rotta-$icon_hash-reels-$reels_hash.apk"
 
 rm -f "$tmp_dir/apk/instagram-patched-456.0.0.53.78.apk" "$tmp_dir/patch-args"
-PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOTIFICATION_PATCHER="$tmp_dir/reels.py" GRAMFORGE_COMMENT_PATCHER="$tmp_dir/reels.py" GRAMFORGE_REQUESTS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_COMMENT_PATCHER="$tmp_dir/reels.py" GRAMFORGE_REQUESTS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 test -f "$tmp_dir/apk/instagram-patched-456.0.0.53.78.apk"
 test -f "$tmp_dir/patch-args"
 
 # A custom release must rebuild the APK even when the Instagram version is unchanged.
 sed -i "s/CUSTOM_PATCHES_VERSION=v1.1.0/CUSTOM_PATCHES_VERSION=v1.2.0/" "$tmp_dir/check-instagram-update.sh"
 rm -f "$tmp_dir/patch-args"
-PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOTIFICATION_PATCHER="$tmp_dir/reels.py" GRAMFORGE_COMMENT_PATCHER="$tmp_dir/reels.py" GRAMFORGE_REQUESTS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
+PATCH_ARGS_FILE="$tmp_dir/patch-args" APKTOOL_ARGS_FILE="$tmp_dir/apktool-args" GRAMFORGE_APKTOOL_JAR="$tmp_dir/fake-apktool.jar" GRAMFORGE_PROFILE_PATCHER="$tmp_dir/profile.py" GRAMFORGE_REELS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_NOT_INTERESTED_PATCHER="$tmp_dir/reels.py" GRAMFORGE_COMMENT_PATCHER="$tmp_dir/reels.py" GRAMFORGE_REQUESTS_PATCHER="$tmp_dir/reels.py" GRAMFORGE_ICON_PATCHER="$tmp_dir/icon.py" GRAMFORGE_APK_NORMALIZER="$tmp_dir/normalize.py" GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh" >/dev/null
 test -f "$tmp_dir/patch-args"
 grep -Fq "custom-v1.2.0-ads-nav" "$tmp_dir/.patched-app-state"
