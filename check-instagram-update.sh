@@ -9,6 +9,7 @@ CLI_DIR="cli"
 FEUR_DIR=".tools/feurstagram"
 
 PATCHES_REPO="brosssh/morphe-patches"
+CUSTOM_PATCHES_REPO="brandonp2412/instagram-patches"
 CLI_REPO="MorpheApp/morphe-desktop"
 FEUR_REPO="jean-voila/FeurStagram"
 
@@ -22,6 +23,9 @@ state_value() {
 
 patches_last="$(state_value PATCHES_VERSION)"
 patches_asset_last="$(state_value PATCHES_ASSET)"
+custom_last="$(state_value CUSTOM_PATCHES_VERSION)"
+custom_asset_last="$(state_value CUSTOM_PATCHES_ASSET)"
+custom_digest_last="$(state_value CUSTOM_PATCHES_DIGEST)"
 cli_last="$(state_value CLI_VERSION)"
 cli_java="$(state_value CLI_JAVA)"
 feur_tag_last="$(state_value FEUR_TAG)"
@@ -36,6 +40,9 @@ save_state() {
   cat > "$STATE_FILE" <<EOF
 PATCHES_VERSION=$patches_last
 PATCHES_ASSET=$patches_asset_last
+CUSTOM_PATCHES_VERSION=$custom_last
+CUSTOM_PATCHES_ASSET=$custom_asset_last
+CUSTOM_PATCHES_DIGEST=$custom_digest_last
 CLI_VERSION=$cli_last
 CLI_JAVA=$cli_java
 FEUR_TAG=$feur_tag_last
@@ -112,6 +119,30 @@ else
   patches_asset_last="$patches_asset"
   patches_changed=1
 fi
+
+# Store our bundle separately: upstream and custom releases may use identical asset names.
+custom_json="$(curl -sf "https://api.github.com/repos/$CUSTOM_PATCHES_REPO/releases/latest")"
+custom_tag="$(jq -er '.tag_name | select(type == "string" and length > 0)' <<<"$custom_json")"
+custom_asset="$(jq -er '[.assets[] | select(.name | endswith(".mpp"))] | if length == 1 then .[0].name else error("expected one custom bundle") end' <<<"$custom_json")"
+custom_url="$(jq -er --arg name "$custom_asset" '.assets[] | select(.name == $name) | .browser_download_url' <<<"$custom_json")"
+custom_digest="$(jq -r --arg name "$custom_asset" '.assets[] | select(.name == $name) | .digest // empty' <<<"$custom_json")"
+[[ "$custom_asset" == "$(basename "$custom_asset")" ]] || exit 1
+mkdir -p "$PATCHES_DIR/custom"
+custom_target="$PATCHES_DIR/custom/$custom_asset"
+if [[ "$custom_tag" != "$custom_last" || "$custom_asset" != "$custom_asset_last" || "$custom_digest" != "$custom_digest_last" ]] || ! verify_digest "$custom_target" "$custom_digest"; then
+  printf 'GramForge custom patches: %s -> %s\n' "${custom_last:-none}" "$custom_tag"
+  custom_tmp="$(mktemp "$PATCHES_DIR/custom/.bundle.XXXXXX")"
+  if ! curl -sfL -o "$custom_tmp" "$custom_url" || ! verify_digest "$custom_tmp" "$custom_digest" || [[ ! -s "$custom_tmp" ]]; then
+    rm -f "$custom_tmp"
+    exit 1
+  fi
+  mv "$custom_tmp" "$custom_target"
+  patches_changed=1
+fi
+ln -sfn "custom/$custom_asset" "$PATCHES_DIR/gramforge.mpp"
+custom_last="$custom_tag"
+custom_asset_last="$custom_asset"
+custom_digest_last="$custom_digest"
 
 cli_release="$(gh_latest_asset "$CLI_REPO" '.jar')"
 mapfile -t cli_release_lines <<< "$cli_release"

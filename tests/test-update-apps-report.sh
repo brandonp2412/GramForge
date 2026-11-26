@@ -12,8 +12,8 @@ new_report="$tmp_dir/current.json"
 old_report="$tmp_dir/legacy.json"
 report="$tmp_dir/case.json"
 
-printf '%s\n' '{"success":true,"packageName":"com.instagram.android","packageVersion":"453.0.0.57.79","appliedPatches":["Hide navigation buttons"],"failedPatches":[],"stepResults":[{"step":"PATCHING","success":true},{"step":"REBUILDING","success":true},{"step":"SIGNING","success":true}]}' > "$new_report"
-printf '%s\n' '{"packageName":"com.instagram.android","packageVersion":"453.0.0.57.79","appliedPatches":[{"name":"Hide navigation buttons","options":[]}],"failedPatches":[],"patchingSteps":[{"step":"PATCHING","success":true},{"step":"REBUILDING","success":true},{"step":"SIGNING","success":true}]}' > "$old_report"
+printf '%s\n' '{"success":true,"packageName":"com.instagram.android","packageVersion":"453.0.0.57.79","appliedPatches":["Hide navigation buttons","Hide follow recommendations"],"failedPatches":[],"stepResults":[{"step":"PATCHING","success":true},{"step":"REBUILDING","success":true},{"step":"SIGNING","success":true}]}' > "$new_report"
+printf '%s\n' '{"packageName":"com.instagram.android","packageVersion":"453.0.0.57.79","appliedPatches":[{"name":"Hide navigation buttons","options":[]},{"name":"Hide follow recommendations","options":[]}],"failedPatches":[],"patchingSteps":[{"step":"PATCHING","success":true},{"step":"REBUILDING","success":true},{"step":"SIGNING","success":true}]}' > "$old_report"
 
 expect_accept() {
   if ! verify_patch_report "$1" "$version"; then
@@ -43,11 +43,12 @@ reject_change missing-signing-step 'del(.stepResults[2])'
 reject_change failed-rebuilding-step '.stepResults[1].success = false'
 reject_change missing-applied-patches 'del(.appliedPatches)'
 reject_change missing-navigation-patch '.appliedPatches = []'
+reject_change missing-follow-patch '.appliedPatches = ["Hide navigation buttons"]'
 reject_change additional-patch '.appliedPatches += ["Unknown patch"]'
-reject_change failed-patch '.failedPatches = ["Hide navigation buttons"]'
+reject_change failed-patch '.failedPatches = ["Hide navigation buttons","Hide follow recommendations"]'
 reject_change missing-failed-patch-array 'del(.failedPatches)'
 
-jq -n '{success:true,packageName:"com.instagram.android",packageVersion:"453.0.0.57.79",stepResults:[],appliedPatches:["Hide navigation buttons"],failedPatches:[]}' > "$report"
+jq -n '{success:true,packageName:"com.instagram.android",packageVersion:"453.0.0.57.79",stepResults:[],appliedPatches:["Hide navigation buttons","Hide follow recommendations"],failedPatches:[]}' > "$report"
 expect_reject empty-stages
 
 printf 'Morphe report verification: current and legacy schemas accepted; 12 invalid reports rejected.\n'

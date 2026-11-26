@@ -7,12 +7,17 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 cp "$repo_dir/check-instagram-update.sh" "$tmp_dir/check-instagram-update.sh"
 chmod +x "$tmp_dir/check-instagram-update.sh"
+mkdir -p "$tmp_dir/patches/custom"
+printf bundle > "$tmp_dir/patches/custom/custom.mpp"
 mkdir -p "$tmp_dir/bin" "$tmp_dir/patches" "$tmp_dir/cli" "$tmp_dir/.tools/feurstagram"
 printf 'patch\n' > "$tmp_dir/patches/patches.mpp"
 ln -s patches.mpp "$tmp_dir/patches/instagram.mpp"
 touch "$tmp_dir/cli/morphe-cli.jar"
 
 cat > "$tmp_dir/.update-state" <<'EOF'
+CUSTOM_PATCHES_VERSION=v1.1.0
+CUSTOM_PATCHES_ASSET=custom.mpp
+CUSTOM_PATCHES_DIGEST=
 PATCHES_VERSION=v-patches
 PATCHES_ASSET=patches.mpp
 CLI_VERSION=v-cli
@@ -26,6 +31,10 @@ cat > "$tmp_dir/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 args="$*"
+if [[ "$args" == *"api.github.com/repos/brandonp2412/instagram-patches"* ]]; then
+  printf '{"tag_name":"v1.1.0","assets":[{"name":"custom.mpp","browser_download_url":"https://example.test/custom.mpp"}]}\n'
+  exit 0
+fi
 if [[ "$args" == *"api.github.com/repos/brosssh/morphe-patches"* ]]; then
   printf '{"tag_name":"v-patches","assets":[{"name":"patches.mpp","browser_download_url":"https://example.test/patches.mpp"}]}\n'
   exit 0

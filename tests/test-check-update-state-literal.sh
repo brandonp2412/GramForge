@@ -7,10 +7,15 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 cp "$repo_dir/check-instagram-update.sh" "$tmp_dir/check-instagram-update.sh"
 chmod +x "$tmp_dir/check-instagram-update.sh"
+mkdir -p "$tmp_dir/patches/custom"
+printf bundle > "$tmp_dir/patches/custom/custom.mpp"
 mkdir -p "$tmp_dir/bin" "$tmp_dir/patches" "$tmp_dir/cli" "$tmp_dir/.tools/feurstagram"
 touch "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/patches/\$(touch PWNED).mpp" "$tmp_dir/.tools/feurstagram/base.apk"
 
 cat > "$tmp_dir/.update-state" <<'EOF'
+CUSTOM_PATCHES_VERSION=v1.1.0
+CUSTOM_PATCHES_ASSET=custom.mpp
+CUSTOM_PATCHES_DIGEST=
 PATCHES_VERSION=v-patches
 PATCHES_ASSET=$(touch PWNED).mpp
 CLI_VERSION=v-cli
@@ -22,7 +27,9 @@ EOF
 
 cat > "$tmp_dir/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-if [[ "$*" == *"morphe-patches"* ]]; then
+if [[ "$*" == *"brandonp2412/instagram-patches"* ]]; then
+  printf '{"tag_name":"v1.1.0","assets":[{"name":"custom.mpp","browser_download_url":"https://example.test/custom.mpp"}]}\n'
+elif [[ "$*" == *"morphe-patches"* ]]; then
   printf '{"tag_name":"v-patches","assets":[{"name":"$(touch PWNED).mpp","browser_download_url":"https://example.test/patch"}]}\n'
 elif [[ "$*" == *"morphe-desktop"* ]]; then
   printf '{"tag_name":"v-cli","assets":[{"name":"morphe-cli.jar","browser_download_url":"https://example.test/cli"}]}\n'

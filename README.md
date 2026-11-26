@@ -29,3 +29,5 @@ Set `GRAMFORGE_KEYSTORE` to a private keystore outside the repository. Configure
 For private ADB delivery, set `GRAMFORGE_ADB_SERIAL`, `GRAMFORGE_ADB_EXPECTED_MODEL`, and `GRAMFORGE_ADB_ONLY=true`. Installs preserve app data and retry if the device is unavailable.
 
 Keep keys, tokens, device identifiers, and host-specific settings in the local configuration—never in Git.
+
+GramForge downloads [instagram-patches](https://github.com/brandonp2412/instagram-patches/releases/latest) separately from the navigation bundle. Follow recommendations are patched by that released Morphe bundle. Notification suppression remains local for Instagram 456 until the external notification patch supports that version.

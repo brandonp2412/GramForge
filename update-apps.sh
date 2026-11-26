@@ -77,20 +77,22 @@ verify_patch_report() {
       and (.failedPatches == [])
       and (.appliedPatches |
         if type == "array" then
-          map(if type == "string" then . elif type == "object" then .name else null end)
-          == ["Hide navigation buttons"]
+          map(if type == "string" then . elif type == "object" then .name else null end) | sort
+          == (["Hide navigation buttons", "Hide follow recommendations"] | sort)
         else false end)
   ' "$report" >/dev/null
 }
 
 patch_instagram() {
   local feur_tag feur_asset feur_base version package_name
-  local patches_version cli_version icon_fingerprint reels_patch_fingerprint patch_profile legacy_profile_prefix legacy_profile_suffix legacy_body legacy_cli_version output previous previous_profile
+  local patches_version custom_version cli_version icon_fingerprint reels_patch_fingerprint patch_profile legacy_profile_prefix legacy_profile_suffix legacy_body legacy_cli_version output previous previous_profile
   local apktool profile_patcher reels_patcher not_interested_patcher notification_patcher comment_patcher icon_patcher normalizer tmp_dir framework_dir decoded rebuilt normalized normalized_cache report
 
   feur_tag="$(update_state_get FEUR_TAG)"
   feur_asset="$(update_state_get FEUR_ASSET)"
   patches_version="$(update_state_get PATCHES_VERSION)"
+  custom_version="$(update_state_get CUSTOM_PATCHES_VERSION)"
+  [[ -n "$custom_version" && -s patches/gramforge.mpp ]] || die "Custom patch bundle missing; run check-instagram-update.sh."
   cli_version="$(update_state_get CLI_VERSION)"
   [[ -n "$feur_tag" && -n "$feur_asset" ]] || die "FeurStagram release state is incomplete."
 
@@ -102,10 +104,12 @@ patch_instagram() {
   [[ "$package_name" == "com.instagram.android" ]] || die "FeurStagram base package is $package_name, expected com.instagram.android."
   [[ -n "$version" ]] || die "Could not read Instagram version from $feur_base."
 
+  [[ "$version" == "456.0.0.53.78" ]] || die "Custom follow patch has not been validated on Instagram $version."
+
   icon_fingerprint="$(python3 tools/patch-launcher-icon.py --fingerprint assets/rotta-launcher)"
-  reels_patch_fingerprint="$(sha256sum tools/patch-reels-actions.py tools/patch-reels-not-interested.py tools/patch-notification-nudges.py tools/patch-comment-filter.py tools/patch-message-requests-link.py tools/patch-follow-recommendations.py | cut -d' ' -f1 | sha256sum | cut -c1-16)"
-  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v5-rotta-$icon_fingerprint-reels-$reels_patch_fingerprint"
-  legacy_profile_prefix="feur-$feur_tag-brosssh-${patches_version:-unknown}-"
+  reels_patch_fingerprint="$(sha256sum tools/patch-reels-actions.py tools/patch-reels-not-interested.py tools/patch-notification-nudges.py tools/patch-comment-filter.py tools/patch-message-requests-link.py | cut -d' ' -f1 | sha256sum | cut -c1-16)"
+  patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-custom-$custom_version-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v5-rotta-$icon_fingerprint-reels-$reels_patch_fingerprint"
+  legacy_profile_prefix="feur-$feur_tag-brosssh-${patches_version:-unknown}-custom-$custom_version-"
   legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v5-rotta-$icon_fingerprint-reels-$reels_patch_fingerprint"
   output="apk/instagram-patched-$version.apk"
   previous="$(state_get INSTAGRAM_VERSION)"
@@ -149,7 +153,6 @@ patch_instagram() {
     notification_patcher="${GRAMFORGE_NOTIFICATION_PATCHER:-tools/patch-notification-nudges.py}"
     comment_patcher="${GRAMFORGE_COMMENT_PATCHER:-tools/patch-comment-filter.py}"
     requests_patcher="${GRAMFORGE_REQUESTS_PATCHER:-tools/patch-message-requests-link.py}"
-    local follow_patcher="${GRAMFORGE_FOLLOW_PATCHER:-tools/patch-follow-recommendations.py}"
     icon_patcher="${GRAMFORGE_ICON_PATCHER:-tools/patch-launcher-icon.py}"
     normalizer="${GRAMFORGE_APK_NORMALIZER:-tools/normalize-apk.py}"
     [[ -f "$profile_patcher" ]] || { rm -rf "$tmp_dir"; die "Profile patcher not found: $profile_patcher"; }
@@ -194,10 +197,6 @@ patch_instagram() {
       rm -rf "$tmp_dir"
       die "Instagram Direct inbox changed; refusing to build without Requests link removal."
     fi
-    if ! python3 "$follow_patcher" "$decoded"; then
-      rm -rf "$tmp_dir"
-      die "Instagram follow recommendation internals changed; refusing to build without suppression."
-    fi
     if ! python3 "$icon_patcher" "$decoded" assets/rotta-launcher; then
       rm -rf "$tmp_dir"
       die "Instagram launcher resources changed; refusing to build without Rotta's icon."
@@ -214,19 +213,19 @@ patch_instagram() {
   fi
 
   [[ -f "$GRAMFORGE_KEYSTORE" ]] || { rm -rf "$tmp_dir"; die "Signing keystore not found: $GRAMFORGE_KEYSTORE"; }
-  echo "Applying GramForge navigation profile with Morphe..."
-  if ! "$JAVA_BIN" -jar cli/morphe-cli.jar patch "$normalized_cache"       -f       -p patches/instagram.mpp       -e "Hide navigation buttons"       -O hideHome="$HIDE_HOME"       -O hideReels="$HIDE_REELS"       -O hideDirect="$HIDE_DIRECT"       -O hideSearch="$HIDE_SEARCH"       -O hideProfile="$HIDE_PROFILE"       -O hideCreate="$HIDE_CREATE"       --bytecode-mode STRIP_FAST       --exclusive       -r "$report"       -o "$output"       --keystore "$GRAMFORGE_KEYSTORE"       --keystore-password "$GRAMFORGE_KEYSTORE_PASSWORD"       --keystore-entry-alias "$GRAMFORGE_KEY_ALIAS"       --keystore-entry-password "$GRAMFORGE_KEY_PASSWORD"; then
+  echo "Applying GramForge navigation and external follow patches with Morphe..."
+  if ! "$JAVA_BIN" -jar cli/morphe-cli.jar patch "$normalized_cache"       -f       -p patches/instagram.mpp       -e "Hide navigation buttons"       -O hideHome="$HIDE_HOME"       -O hideReels="$HIDE_REELS"       -O hideDirect="$HIDE_DIRECT"       -O hideSearch="$HIDE_SEARCH"       -O hideProfile="$HIDE_PROFILE"       -O hideCreate="$HIDE_CREATE"       -p patches/gramforge.mpp -e "Hide follow recommendations"       --bytecode-mode STRIP_FAST       --exclusive       -r "$report"       -o "$tmp_dir/patched.apk"       --keystore "$GRAMFORGE_KEYSTORE"       --keystore-password "$GRAMFORGE_KEYSTORE_PASSWORD"       --keystore-entry-alias "$GRAMFORGE_KEY_ALIAS"       --keystore-entry-password "$GRAMFORGE_KEY_PASSWORD"; then
     rm -rf "$tmp_dir"
     die "Navigation patching/signing failed; installed-state metadata was not updated."
   fi
 
   if ! verify_patch_report "$report" "$version"; then
     install -m 0600 "$report" .tools/last-invalid-nav-report.json
-    rm -f "$output"
     rm -rf "$tmp_dir"
     die "Morphe report did not prove the expected navigation patch applied cleanly."
   fi
 
+  mv "$tmp_dir/patched.apk" "$output"
   rm -rf "$tmp_dir"
   state_set INSTAGRAM_VERSION "$version"
   state_set INSTAGRAM_PATCH_PROFILE "$patch_profile"

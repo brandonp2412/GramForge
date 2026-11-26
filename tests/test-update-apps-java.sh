@@ -17,38 +17,38 @@ cp "$repo_dir/tools/patch-reels-not-interested.py" "$tmp_dir/tools/patch-reels-n
 cp "$repo_dir/tools/patch-notification-nudges.py" "$tmp_dir/tools/patch-notification-nudges.py"
 cp "$repo_dir/tools/patch-comment-filter.py" "$tmp_dir/tools/patch-comment-filter.py"
 cp "$repo_dir/tools/patch-message-requests-link.py" "$tmp_dir/tools/patch-message-requests-link.py"
-cp "$repo_dir/tools/patch-follow-recommendations.py" "$tmp_dir/tools/patch-follow-recommendations.py"
-reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" "$repo_dir/tools/patch-reels-not-interested.py" "$repo_dir/tools/patch-notification-nudges.py" "$repo_dir/tools/patch-comment-filter.py" "$repo_dir/tools/patch-message-requests-link.py" "$repo_dir/tools/patch-follow-recommendations.py" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
+reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" "$repo_dir/tools/patch-reels-not-interested.py" "$repo_dir/tools/patch-notification-nudges.py" "$repo_dir/tools/patch-comment-filter.py" "$repo_dir/tools/patch-message-requests-link.py" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
 icon_hash="$(python3 "$repo_dir/tools/patch-launcher-icon.py" --fingerprint "$repo_dir/assets/rotta-launcher")"
 chmod +x "$tmp_dir/update-apps.sh" "$tmp_dir/tools/ensure-apktool.sh"
+printf bundle > "$tmp_dir/patches/gramforge.mpp"
 touch "$tmp_dir/APKEditor.jar" "$tmp_dir/cli/morphe-cli.jar" "$tmp_dir/test.keystore" "$tmp_dir/.tools/feurstagram/base.apk"
-touch "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk"
+touch "$tmp_dir/apk/instagram-patched-456.0.0.53.78.apk"
 
-legacy_profile="feur-v446-0-0-49-77-brosssh-v2.8.2-v1.16.0-ads-nav-true-false-false-false-false-false-v5-rotta-$icon_hash-reels-$reels_hash"
-profile="feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v5-rotta-$icon_hash-reels-$reels_hash"
-printf 'INSTAGRAM_VERSION=446.0.0.49.77\nINSTAGRAM_PATCH_PROFILE=%s\n' "$legacy_profile" > "$tmp_dir/.patched-app-state"
+legacy_profile="feur-v456-0-0-53-78-brosssh-v2.8.2-custom-v1.1.0-v1.16.0-ads-nav-true-false-false-false-false-false-v5-rotta-$icon_hash-reels-$reels_hash"
+profile="feur-v456-0-0-53-78-brosssh-v2.8.2-custom-v1.1.0-ads-nav-true-false-false-false-false-false-v5-rotta-$icon_hash-reels-$reels_hash"
+printf 'INSTAGRAM_VERSION=456.0.0.53.78\nINSTAGRAM_PATCH_PROFILE=%s\n' "$legacy_profile" > "$tmp_dir/.patched-app-state"
 
 cat > "$tmp_dir/check-instagram-update.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'PATCHES_VERSION=v2.8.2\nPATCHES_ASSET=patches.mpp\nCLI_VERSION=v1.16.0\nCLI_JAVA=java\nFEUR_TAG=v446-0-0-49-77\nFEUR_ASSET=base.apk\nFEUR_DIGEST=\n' > .update-state
+printf 'CUSTOM_PATCHES_VERSION=v1.1.0\nPATCHES_VERSION=v2.8.2\nPATCHES_ASSET=patches.mpp\nCLI_VERSION=v1.16.0\nCLI_JAVA=java\nFEUR_TAG=v456-0-0-53-78\nFEUR_ASSET=base.apk\nFEUR_DIGEST=\n' > .update-state
 EOF
 chmod +x "$tmp_dir/check-instagram-update.sh"
 
 cat > "$tmp_dir/bin/java" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"APKEditor.jar info"* ]]; then
-  printf 'package="com.instagram.android"\nVersionName="446.0.0.49.77"\n'
+  printf 'package="com.instagram.android"\nVersionName="456.0.0.53.78"\n'
 fi
 EOF
 chmod +x "$tmp_dir/bin/java"
 
 output="$(GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh")"
-grep -Fqx "instagram: migrated legacy profile without rebuilding 446.0.0.49.77 ($profile)" <<< "$output"
+grep -Fqx "instagram: migrated legacy profile without rebuilding 456.0.0.53.78 ($profile)" <<< "$output"
 grep -Fqx "INSTAGRAM_PATCH_PROFILE=$profile" "$tmp_dir/.patched-app-state"
 grep -Fqx 'INSTAGRAM_TOOLCHAIN_VERSION=v1.16.0' "$tmp_dir/.patched-app-state"
 
 # A patcher-only version update is maintenance, not a new GramForge app profile.
 sed -i 's/CLI_VERSION=v1.16.0/CLI_VERSION=v1.18.1/' "$tmp_dir/check-instagram-update.sh"
 output="$(GRAMFORGE_CONFIG_FILE=/dev/null GRAMFORGE_KEYSTORE="$tmp_dir/test.keystore" PATH="$tmp_dir/bin:$PATH" "$tmp_dir/update-apps.sh")"
-grep -Fqx "instagram: already patched 446.0.0.49.77 ($profile)" <<< "$output"
+grep -Fqx "instagram: already patched 456.0.0.53.78 ($profile)" <<< "$output"
 grep -Fqx 'INSTAGRAM_TOOLCHAIN_VERSION=v1.16.0' "$tmp_dir/.patched-app-state"

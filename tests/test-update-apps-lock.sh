@@ -17,16 +17,17 @@ cp "$repo_dir/tools/patch-reels-not-interested.py" "$tmp_dir/tools/patch-reels-n
 cp "$repo_dir/tools/patch-notification-nudges.py" "$tmp_dir/tools/patch-notification-nudges.py"
 cp "$repo_dir/tools/patch-comment-filter.py" "$tmp_dir/tools/patch-comment-filter.py"
 cp "$repo_dir/tools/patch-message-requests-link.py" "$tmp_dir/tools/patch-message-requests-link.py"
-cp "$repo_dir/tools/patch-follow-recommendations.py" "$tmp_dir/tools/patch-follow-recommendations.py"
-reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" "$repo_dir/tools/patch-reels-not-interested.py" "$repo_dir/tools/patch-notification-nudges.py" "$repo_dir/tools/patch-comment-filter.py" "$repo_dir/tools/patch-message-requests-link.py" "$repo_dir/tools/patch-follow-recommendations.py" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
+reels_hash="$(sha256sum "$repo_dir/tools/patch-reels-actions.py" "$repo_dir/tools/patch-reels-not-interested.py" "$repo_dir/tools/patch-notification-nudges.py" "$repo_dir/tools/patch-comment-filter.py" "$repo_dir/tools/patch-message-requests-link.py" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
 icon_hash="$(python3 "$repo_dir/tools/patch-launcher-icon.py" --fingerprint "$repo_dir/assets/rotta-launcher")"
 chmod +x "$tmp_dir/update-apps.sh"
+mkdir -p "$tmp_dir/patches"
+printf bundle > "$tmp_dir/patches/gramforge.mpp"
 touch "$tmp_dir/APKEditor.jar" "$tmp_dir/test.keystore"
 touch "$tmp_dir/.tools/feurstagram/feurstagram.apk"
-touch "$tmp_dir/apk/instagram-patched-446.0.0.49.77.apk"
+touch "$tmp_dir/apk/instagram-patched-456.0.0.53.78.apk"
 
-profile="feur-v446-0-0-49-77-brosssh-v2.8.2-ads-nav-true-false-false-false-false-false-v5-rotta-$icon_hash-reels-$reels_hash"
-printf 'INSTAGRAM_VERSION=446.0.0.49.77\nINSTAGRAM_PATCH_PROFILE=%s\n' "$profile" > "$tmp_dir/.patched-app-state"
+profile="feur-v456-0-0-53-78-brosssh-v2.8.2-custom-v1.1.0-ads-nav-true-false-false-false-false-false-v5-rotta-$icon_hash-reels-$reels_hash"
+printf 'INSTAGRAM_VERSION=456.0.0.53.78\nINSTAGRAM_PATCH_PROFILE=%s\n' "$profile" > "$tmp_dir/.patched-app-state"
 
 cat > "$tmp_dir/check-instagram-update.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -38,11 +39,12 @@ fi
 trap 'rmdir .update-entered' EXIT
 sleep 0.5
 cat > .update-state <<STATE
+CUSTOM_PATCHES_VERSION=v1.1.0
 PATCHES_VERSION=v2.8.2
 PATCHES_ASSET=patches-2.8.2.mpp
 CLI_VERSION=v1.18.0
 CLI_JAVA=java
-FEUR_TAG=v446-0-0-49-77
+FEUR_TAG=v456-0-0-53-78
 FEUR_ASSET=feurstagram.apk
 FEUR_DIGEST=
 STATE
@@ -52,7 +54,7 @@ chmod +x "$tmp_dir/check-instagram-update.sh"
 cat > "$tmp_dir/bin/java" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"APKEditor.jar info"* ]]; then
-  printf 'package="com.instagram.android"\nVersionName="446.0.0.49.77"\n'
+  printf 'package="com.instagram.android"\nVersionName="456.0.0.53.78"\n'
   exit 0
 fi
 exit 0
@@ -75,5 +77,5 @@ wait "$first_pid"
 wait "$second_pid"
 
 test ! -e "$tmp_dir/.overlap-detected"
-grep -Fqx "instagram: already patched 446.0.0.49.77 ($profile)" "$tmp_dir/first.out"
-grep -Fqx "instagram: already patched 446.0.0.49.77 ($profile)" "$tmp_dir/second.out"
+grep -Fqx "instagram: already patched 456.0.0.53.78 ($profile)" "$tmp_dir/first.out"
+grep -Fqx "instagram: already patched 456.0.0.53.78 ($profile)" "$tmp_dir/second.out"
