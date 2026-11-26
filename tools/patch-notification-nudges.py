@@ -330,6 +330,51 @@ def patch_current(root: Path, *, check: bool = False) -> list[str]:
     ]
 
 
+def suppress_456_reachability_surfaces(source: str) -> str:
+    """Disable the dedicated notification promotion gates, never OS permission checks."""
+    for marker in ('"RESHARE_REEL_PROMO_DIALOG"', '"STORY_REPLY_PROMO_DIALOG"',
+                   '"DIRECT_THREAD_BANNER"', '"COMMENT_POSTED"'):
+        if marker not in source:
+            raise PatchMismatch("456 notification reachability surface enum changed: " + marker)
+    signatures = (
+        ("public static final", "A00(LX/02mo;Lcom/instagram/common/session/UserSession;LX/05xR;)Z",
+         ("->ordinal()I", "->Be6(LX/02mo;J)Z", ".packed-switch")),
+        ("public final", "A01(Lcom/instagram/common/session/UserSession;)Z",
+         ("->ordinal()I", "->Bdz(J)Z", ".packed-switch")),
+    )
+    for access, signature, markers in signatures:
+        source = replace_method(
+            source, signature, markers,
+            f".method {access} {signature}\n    .locals 1\n"
+            "    const/4 v0, 0x0\n    return v0\n.end method",
+        )
+    return source
+
+
+def additional_456_reachability_updates(root: Path) -> dict[Path, str]:
+    surface = only_path(root, "05xR.smali")
+    updates = {surface: suppress_456_reachability_surfaces(surface.read_text())}
+    # V2/V3 eligibility controllers also guard native presentations. Preserve
+    # all permission/settings operations, callbacks and message-send paths.
+    for name, marker in (
+        ("0D77", "V2_REACHABILITY_UPSELL_IMPRESSION_COUNTER"),
+        ("0E9G", "V2_REACHABILITY_UPSELL_GLOBAL_SHARED_DISMISS_COOLDOWN"),
+        ("0I27", "LX/05xR;->A02(Lcom/instagram/common/session/UserSession;)Z"),
+    ):
+        path = only_path(root, name + ".smali")
+        source = path.read_text()
+        if ".implements LX/0avn;" not in source or marker not in source:
+            raise PatchMismatch("456 reachability controller changed: " + name)
+        for signature in ("B2x()Z", "B2y()Z"):
+            source = replace_method(
+                source, signature, ("LX/05xR;", "LX/03fh;->A01(Landroid/content/Context;)Z"),
+                f".method public final {signature}\n    .locals 1\n"
+                "    const/4 v0, 0x0\n    return v0\n.end method",
+            )
+        updates[path] = source
+    return updates
+
+
 def patch_456(root: Path, *, check: bool = False) -> list[str]:
     """Target only Instagram 456 notification solicitation, not push delivery."""
     def replace(name, signature, markers, body):
@@ -488,6 +533,7 @@ def patch_456(root: Path, *, check: bool = False) -> list[str]:
         empty_path: empty_source.replace(empty, updated_empty, 1),
         banner_path: banner, nudge_helper: CURRENT_DIRECT_NUDGE_PREDICATE,
     }
+    updates.update(additional_456_reachability_updates(root))
     if not check:
         for path, content in updates.items():
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -495,7 +541,7 @@ def patch_456(root: Path, *, check: bool = False) -> list[str]:
     return [
         "feed/Direct permission nudges", "delayed permission dialogs",
         "onboarding push opt-in", "notification Quick Promotion",
-        "Direct-thread notification banner",
+        "Direct-thread notification banner", "shared V2/V3 reachability prompts (including Reel sharing)",
     ]
 
 
