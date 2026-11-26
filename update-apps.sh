@@ -103,7 +103,7 @@ patch_instagram() {
   [[ -n "$version" ]] || die "Could not read Instagram version from $feur_base."
 
   icon_fingerprint="$(python3 tools/patch-launcher-icon.py --fingerprint assets/rotta-launcher)"
-  reels_patch_fingerprint="$(sha256sum tools/patch-reels-actions.py tools/patch-reels-not-interested.py tools/patch-notification-nudges.py tools/patch-comment-filter.py tools/patch-message-requests-link.py | cut -d' ' -f1 | sha256sum | cut -c1-16)"
+  reels_patch_fingerprint="$(sha256sum tools/patch-reels-actions.py tools/patch-reels-not-interested.py tools/patch-notification-nudges.py tools/patch-comment-filter.py tools/patch-message-requests-link.py tools/patch-follow-recommendations.py | cut -d' ' -f1 | sha256sum | cut -c1-16)"
   patch_profile="feur-$feur_tag-brosssh-${patches_version:-unknown}-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v5-rotta-$icon_fingerprint-reels-$reels_patch_fingerprint"
   legacy_profile_prefix="feur-$feur_tag-brosssh-${patches_version:-unknown}-"
   legacy_profile_suffix="-ads-nav-$HIDE_HOME-$HIDE_REELS-$HIDE_DIRECT-$HIDE_SEARCH-$HIDE_PROFILE-$HIDE_CREATE-v5-rotta-$icon_fingerprint-reels-$reels_patch_fingerprint"
@@ -149,6 +149,7 @@ patch_instagram() {
     notification_patcher="${GRAMFORGE_NOTIFICATION_PATCHER:-tools/patch-notification-nudges.py}"
     comment_patcher="${GRAMFORGE_COMMENT_PATCHER:-tools/patch-comment-filter.py}"
     requests_patcher="${GRAMFORGE_REQUESTS_PATCHER:-tools/patch-message-requests-link.py}"
+    local follow_patcher="${GRAMFORGE_FOLLOW_PATCHER:-tools/patch-follow-recommendations.py}"
     icon_patcher="${GRAMFORGE_ICON_PATCHER:-tools/patch-launcher-icon.py}"
     normalizer="${GRAMFORGE_APK_NORMALIZER:-tools/normalize-apk.py}"
     [[ -f "$profile_patcher" ]] || { rm -rf "$tmp_dir"; die "Profile patcher not found: $profile_patcher"; }
@@ -192,6 +193,10 @@ patch_instagram() {
     if ! python3 "$requests_patcher" "$decoded"; then
       rm -rf "$tmp_dir"
       die "Instagram Direct inbox changed; refusing to build without Requests link removal."
+    fi
+    if ! python3 "$follow_patcher" "$decoded"; then
+      rm -rf "$tmp_dir"
+      die "Instagram follow recommendation internals changed; refusing to build without suppression."
     fi
     if ! python3 "$icon_patcher" "$decoded" assets/rotta-launcher; then
       rm -rf "$tmp_dir"

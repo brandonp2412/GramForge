@@ -3,6 +3,7 @@
 Builds signed, customized Instagram APKs from FeurStagram using Morphe.
 
 - Blocks ads and hides the Home tab.
+- Suppresses suggested accounts in the feed, profile carousel and follow requests.
 - Removes Reels Save/Repost buttons and their counts.
 - Replaces organic Reels’ More button with immediate **Not interested** (sponsored Reels keep More).
 - Suppresses notification prompts, hides the Message Requests link in Direct inbox navigation and the separate visible Requests header beside Messages, and customizes the launcher icon.
